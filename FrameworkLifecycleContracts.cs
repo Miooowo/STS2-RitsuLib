@@ -35,6 +35,16 @@ namespace STS2RitsuLib
         void OnEvent(IFrameworkLifecycleEvent evt);
     }
 
+    internal sealed class DelegateLifecycleObserver<TEvent>(Action<TEvent> handler) : ILifecycleObserver
+        where TEvent : IFrameworkLifecycleEvent
+    {
+        public void OnEvent(IFrameworkLifecycleEvent evt)
+        {
+            if (evt is TEvent typedEvent)
+                handler(typedEvent);
+        }
+    }
+
     internal sealed class FrameworkLifecycleSubscription(Action unsubscribe) : IDisposable
     {
         private bool _disposed;

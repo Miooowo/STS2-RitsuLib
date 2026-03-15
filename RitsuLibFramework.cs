@@ -67,6 +67,13 @@ namespace STS2RitsuLib
             });
         }
 
+        public static IDisposable SubscribeLifecycle<TEvent>(Action<TEvent> handler, bool replayCurrentState = true)
+            where TEvent : IFrameworkLifecycleEvent
+        {
+            ArgumentNullException.ThrowIfNull(handler);
+            return SubscribeLifecycle(new DelegateLifecycleObserver<TEvent>(handler), replayCurrentState);
+        }
+
         public static void Initialize()
         {
             lock (SyncRoot)
@@ -97,6 +104,20 @@ namespace STS2RitsuLib
                     _frameworkPatcher.RegisterPatch<GameNodeLifecyclePatch>();
                     _frameworkPatcher.RegisterPatch<RunLifecyclePatch>();
                     _frameworkPatcher.RegisterPatch<RunEndedLifecyclePatch>();
+                    _frameworkPatcher.RegisterPatch<CombatHookLifecyclePatch>();
+                    _frameworkPatcher.RegisterPatch<RewardHookLifecyclePatch>();
+                    _frameworkPatcher.RegisterPatch<GoldLossLifecyclePatch>();
+                    _frameworkPatcher.RegisterPatch<RelicObtainedLifecyclePatch>();
+                    _frameworkPatcher.RegisterPatch<RelicRemovedLifecyclePatch>();
+                    _frameworkPatcher.RegisterPatch<RoomHookLifecyclePatch>();
+                    _frameworkPatcher.RegisterPatch<ActHookLifecyclePatch>();
+                    _frameworkPatcher.RegisterPatch<RoomExitLifecyclePatch>();
+                    _frameworkPatcher.RegisterPatch<ActTransitionLifecyclePatch>();
+                    _frameworkPatcher.RegisterPatch<SaveManagerLifecyclePatch>();
+                    _frameworkPatcher.RegisterPatch<RunSavingLifecyclePatch>();
+                    _frameworkPatcher.RegisterPatch<EpochLifecyclePatch>();
+                    _frameworkPatcher.RegisterPatch<UnlockIncrementLifecyclePatch>();
+                    _frameworkPatcher.RegisterPatch<GameOverScreenLifecyclePatch>();
 
                     _frameworkPatcher.RegisterPatch<ProfilePathInitializedPatch>();
                     _frameworkPatcher.RegisterPatch<ProfileDeletePatch>();

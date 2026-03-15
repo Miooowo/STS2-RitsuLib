@@ -24,6 +24,8 @@
 
 ## Typical initializer flow
 
+For a more compact authoring style, you can also use `RitsuLibFramework.CreateContentPack(modId)` as a fluent wrapper around content, keyword, timeline, and unlock registration. See [ContentAuthoringToolkit.md](ContentAuthoringToolkit.md).
+
 ```csharp
 var content = RitsuLibFramework.GetContentRegistry(MyMod.Id);
 var timeline = RitsuLibFramework.GetTimelineRegistry(MyMod.Id);

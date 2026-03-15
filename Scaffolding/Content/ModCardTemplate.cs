@@ -2,6 +2,7 @@ using MegaCrit.Sts2.Core.Entities.Cards;
 using MegaCrit.Sts2.Core.HoverTips;
 using MegaCrit.Sts2.Core.Models;
 using STS2RitsuLib.Keywords;
+using STS2RitsuLib.Scaffolding.Content.Patches;
 
 namespace STS2RitsuLib.Scaffolding.Content
 {
@@ -11,11 +12,18 @@ namespace STS2RitsuLib.Scaffolding.Content
         CardRarity rarity,
         TargetType target,
         bool showInCardLibrary = true,
-        bool autoAdd = true) : CardModel(baseCost, type, rarity, target, showInCardLibrary)
+        bool autoAdd = true) : CardModel(baseCost, type, rarity, target, showInCardLibrary), IModCardAssetOverrides
     {
         protected bool AutoAddRequested { get; } = autoAdd;
         protected virtual IEnumerable<string> RegisteredKeywordIds => [];
         protected virtual IEnumerable<IHoverTip> AdditionalHoverTips => [];
+        public virtual CardAssetProfile AssetProfile => CardAssetProfile.Empty;
+        public virtual string? CustomPortraitPath => AssetProfile.PortraitPath;
+        public virtual string? CustomBetaPortraitPath => AssetProfile.BetaPortraitPath;
+        public virtual string? CustomFramePath => AssetProfile.FramePath;
+        public virtual string? CustomPortraitBorderPath => AssetProfile.PortraitBorderPath;
+        public virtual string? CustomEnergyIconPath => AssetProfile.EnergyIconPath;
+        public virtual string? CustomFrameMaterialPath => AssetProfile.FrameMaterialPath;
 
         protected sealed override IEnumerable<IHoverTip> ExtraHoverTips =>
             AdditionalHoverTips

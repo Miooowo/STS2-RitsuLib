@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Reflection;
 using Godot;
 using MegaCrit.Sts2.Core.Logging;
@@ -9,6 +10,8 @@ using STS2RitsuLib.Keywords;
 using STS2RitsuLib.Lifecycle.Patches;
 using STS2RitsuLib.Patching.Core;
 using STS2RitsuLib.Scaffolding.Characters.Patches;
+using STS2RitsuLib.Scaffolding.Content;
+using STS2RitsuLib.Scaffolding.Content.Patches;
 using STS2RitsuLib.Timeline;
 using STS2RitsuLib.Unlocks;
 using STS2RitsuLib.Unlocks.Patches;
@@ -28,8 +31,9 @@ namespace STS2RitsuLib
         private static readonly Lock SyncRoot = new();
         private static ModPatcher? _frameworkPatcher;
         private static bool _profileServicesInitialized;
-        private static readonly List<ILifecycleObserver> LifecycleObservers = [];
-        private static readonly Dictionary<Type, IFrameworkLifecycleEvent> ReplayableLifecycleEvents = [];
+        private static ILifecycleObserver[] _lifecycleObservers = [];
+        private static readonly ConcurrentDictionary<Type, object> LifecycleTopics = new();
+        private static readonly Dictionary<Type, object> ReplayableLifecycleEvents = [];
         private static readonly HashSet<string> RegisteredScriptAssemblies = [];
 
         static RitsuLibFramework()
@@ -49,20 +53,23 @@ namespace STS2RitsuLib
 
             lock (SyncRoot)
             {
-                LifecycleObservers.Add(observer);
+                _lifecycleObservers = AppendItem(_lifecycleObservers, observer);
                 lifecycleSnapshot = replayCurrentState
-                    ? ReplayableLifecycleEvents.Values.OrderBy(evt => evt.OccurredAtUtc).ToArray()
+                    ? ReplayableLifecycleEvents.Values
+                        .Cast<IFrameworkLifecycleEvent>()
+                        .OrderBy(evt => evt.OccurredAtUtc)
+                        .ToArray()
                     : [];
             }
 
             foreach (var evt in lifecycleSnapshot)
-                SafeNotify(observer, o => o.OnEvent(evt), evt.GetType().Name);
+                SafeNotify(observer, evt, evt.GetType().Name);
 
             return new FrameworkLifecycleSubscription(() =>
             {
                 lock (SyncRoot)
                 {
-                    LifecycleObservers.Remove(observer);
+                    _lifecycleObservers = RemoveItem(_lifecycleObservers, observer);
                 }
             });
         }
@@ -71,7 +78,31 @@ namespace STS2RitsuLib
             where TEvent : IFrameworkLifecycleEvent
         {
             ArgumentNullException.ThrowIfNull(handler);
-            return SubscribeLifecycle(new DelegateLifecycleObserver<TEvent>(handler), replayCurrentState);
+
+            if (!LifecycleEventTypeCache<TEvent>.SupportsTypedDispatch)
+                return SubscribeLifecycle(new DelegateLifecycleObserver<TEvent>(handler), replayCurrentState);
+
+            object? replayEvent = null;
+            var topic = GetLifecycleTopic<TEvent>();
+
+            lock (SyncRoot)
+            {
+                topic.Add(handler);
+
+                if (replayCurrentState)
+                    ReplayableLifecycleEvents.TryGetValue(LifecycleEventTypeCache<TEvent>.EventType, out replayEvent);
+            }
+
+            if (replayEvent is TEvent typedReplayEvent)
+                SafeNotify(handler, typedReplayEvent, LifecycleEventTypeCache<TEvent>.EventName);
+
+            return new FrameworkLifecycleSubscription(() =>
+            {
+                lock (SyncRoot)
+                {
+                    topic.Remove(handler);
+                }
+            });
         }
 
         public static void Initialize()
@@ -118,6 +149,20 @@ namespace STS2RitsuLib
                     _frameworkPatcher.RegisterPatch<EpochLifecyclePatch>();
                     _frameworkPatcher.RegisterPatch<UnlockIncrementLifecyclePatch>();
                     _frameworkPatcher.RegisterPatch<GameOverScreenLifecyclePatch>();
+                    _frameworkPatcher.RegisterPatch<CardPortraitPathPatch>();
+                    _frameworkPatcher.RegisterPatch<CardPortraitAvailabilityPatch>();
+                    _frameworkPatcher.RegisterPatch<CardTextureOverridePatch>();
+                    _frameworkPatcher.RegisterPatch<CardFrameMaterialPatch>();
+                    _frameworkPatcher.RegisterPatch<CardAllPortraitPathsPatch>();
+                    _frameworkPatcher.RegisterPatch<RelicIconPathPatch>();
+                    _frameworkPatcher.RegisterPatch<RelicTexturePatch>();
+                    _frameworkPatcher.RegisterPatch<PowerIconPathPatch>();
+                    _frameworkPatcher.RegisterPatch<PowerTexturePatch>();
+                    _frameworkPatcher.RegisterPatch<OrbIconPatch>();
+                    _frameworkPatcher.RegisterPatch<OrbSpritePathPatch>();
+                    _frameworkPatcher.RegisterPatch<OrbAssetPathsPatch>();
+                    _frameworkPatcher.RegisterPatch<PotionImagePathPatch>();
+                    _frameworkPatcher.RegisterPatch<PotionTexturePatch>();
 
                     _frameworkPatcher.RegisterPatch<ProfilePathInitializedPatch>();
                     _frameworkPatcher.RegisterPatch<ProfileDeletePatch>();
@@ -243,6 +288,11 @@ namespace STS2RitsuLib
             return ModUnlockRegistry.For(modId);
         }
 
+        public static ModContentPackBuilder CreateContentPack(string modId)
+        {
+            return ModContentPackBuilder.For(modId);
+        }
+
         public static Logger CreateLogger(string modId, LogType logType = LogType.Generic)
         {
             ArgumentException.ThrowIfNullOrWhiteSpace(modId);
@@ -359,46 +409,145 @@ namespace STS2RitsuLib
                    ?? throw new InvalidOperationException("Framework patcher is not available yet.");
         }
 
-        internal static void PublishLifecycleEvent(IFrameworkLifecycleEvent evt, string phase)
+        internal static void PublishLifecycleEvent<TEvent>(TEvent evt, string phase)
+            where TEvent : IFrameworkLifecycleEvent
         {
-            lock (SyncRoot)
-            {
-                switch (evt)
-                {
-                    case ProfileDataInvalidatedEvent:
-                        ReplayableLifecycleEvents.Remove(typeof(ProfileDataReadyEvent));
-                        break;
-                    case IReplayableFrameworkLifecycleEvent:
-                        ReplayableLifecycleEvents[evt.GetType()] = evt;
-                        break;
-                }
-            }
-
-            NotifyObservers(o => o.OnEvent(evt), phase);
-        }
-
-        private static void NotifyObservers(Action<ILifecycleObserver> notify, string phase)
-        {
-            ILifecycleObserver[] snapshot;
+            var typedHandlers = Array.Empty<Action<TEvent>>();
+            ILifecycleObserver[] observers;
 
             lock (SyncRoot)
             {
-                snapshot = LifecycleObservers.ToArray();
+                if (LifecycleEventTypeCache<TEvent>.InvalidatesProfileDataReady)
+                    ReplayableLifecycleEvents.Remove(typeof(ProfileDataReadyEvent));
+
+                if (LifecycleEventTypeCache<TEvent>.IsReplayable)
+                    ReplayableLifecycleEvents[LifecycleEventTypeCache<TEvent>.EventType] = evt;
+
+                observers = _lifecycleObservers;
             }
 
-            foreach (var observer in snapshot)
-                SafeNotify(observer, notify, phase);
+            if (LifecycleEventTypeCache<TEvent>.SupportsTypedDispatch)
+                typedHandlers = GetLifecycleTopic<TEvent>().ReadSnapshot();
+
+            foreach (var handler in typedHandlers)
+                SafeNotify(handler, evt, phase);
+
+            foreach (var observer in observers)
+                SafeNotify(observer, evt, phase);
         }
 
-        private static void SafeNotify(ILifecycleObserver observer, Action<ILifecycleObserver> notify, string phase)
+        private static T[] AppendItem<T>(T[] source, T item)
+        {
+            var result = new T[source.Length + 1];
+            Array.Copy(source, result, source.Length);
+            result[^1] = item;
+            return result;
+        }
+
+        private static T[] RemoveItem<T>(T[] source, T item)
+        {
+            var index = Array.IndexOf(source, item);
+            if (index < 0)
+                return source;
+
+            if (source.Length == 1)
+                return [];
+
+            var result = new T[source.Length - 1];
+            if (index > 0)
+                Array.Copy(source, 0, result, 0, index);
+
+            if (index < source.Length - 1)
+                Array.Copy(source, index + 1, result, index, source.Length - index - 1);
+
+            return result;
+        }
+
+        private static void SafeNotify<TEvent>(Action<TEvent> handler, TEvent evt, string phase)
+            where TEvent : IFrameworkLifecycleEvent
         {
             try
             {
-                notify(observer);
+                handler(evt);
             }
             catch (Exception ex)
             {
                 Logger.Warn($"[Lifecycle] Observer callback failed in {phase}: {ex.Message}");
+            }
+        }
+
+        private static void SafeNotify<TEvent>(ILifecycleObserver observer, TEvent evt, string phase)
+            where TEvent : IFrameworkLifecycleEvent
+        {
+            try
+            {
+                observer.OnEvent(evt);
+            }
+            catch (Exception ex)
+            {
+                Logger.Warn($"[Lifecycle] Observer callback failed in {phase}: {ex.Message}");
+            }
+        }
+
+        private static LifecycleTopic<TEvent> GetLifecycleTopic<TEvent>()
+            where TEvent : IFrameworkLifecycleEvent
+        {
+            return (LifecycleTopic<TEvent>)LifecycleTopics.GetOrAdd(
+                LifecycleEventTypeCache<TEvent>.EventType,
+                static _ => new LifecycleTopic<TEvent>()
+            );
+        }
+
+        private static class LifecycleEventTypeCache<TEvent>
+            where TEvent : IFrameworkLifecycleEvent
+        {
+            // ReSharper disable StaticMemberInGenericType
+            public static readonly Type EventType = typeof(TEvent);
+            public static readonly string EventName = EventType.Name;
+            public static readonly bool SupportsTypedDispatch = EventType.IsValueType || EventType.IsSealed;
+
+            public static readonly bool IsReplayable =
+                typeof(IReplayableFrameworkLifecycleEvent).IsAssignableFrom(EventType);
+
+            public static readonly bool InvalidatesProfileDataReady = EventType == typeof(ProfileDataInvalidatedEvent);
+            // ReSharper restore StaticMemberInGenericType
+        }
+
+        private sealed class LifecycleTopic<TEvent>
+            where TEvent : IFrameworkLifecycleEvent
+        {
+            private Action<TEvent>[] _handlers = [];
+
+            public Action<TEvent>[] ReadSnapshot()
+            {
+                return Volatile.Read(ref _handlers);
+            }
+
+            public void Add(Action<TEvent> handler)
+            {
+                while (true)
+                {
+                    var snapshot = Volatile.Read(ref _handlers);
+                    var updated = AppendItem(snapshot, handler);
+
+                    if (ReferenceEquals(Interlocked.CompareExchange(ref _handlers, updated, snapshot), snapshot))
+                        return;
+                }
+            }
+
+            public void Remove(Action<TEvent> handler)
+            {
+                while (true)
+                {
+                    var snapshot = Volatile.Read(ref _handlers);
+                    var updated = RemoveItem(snapshot, handler);
+
+                    if (ReferenceEquals(updated, snapshot))
+                        return;
+
+                    if (ReferenceEquals(Interlocked.CompareExchange(ref _handlers, updated, snapshot), snapshot))
+                        return;
+                }
             }
         }
     }

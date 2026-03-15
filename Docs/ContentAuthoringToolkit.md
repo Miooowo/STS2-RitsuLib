@@ -1,127 +1,147 @@
-# Content Authoring Toolkit
+# Content Authoring Toolkit / 内容创作规则
 
-## Goals
+## Scope / 适用范围
 
-This toolkit is intended to reduce boilerplate for mod authors who need to:
+This document defines the authoring rules for content registration, key naming, and asset override behavior provided by RitsuLib.
 
-- register content, keywords, stories, epochs, and unlock rules together
-- configure assets from predictable paths instead of overriding many getters
-- build cards / relics / powers / orbs / potions on top of shared templates
+本文定义 RitsuLib 提供的内容注册、键命名与资源覆写行为规则。
 
-## New building blocks
+This document is normative. If code behavior differs from informal examples elsewhere, the runtime implementation prevails.
 
-### 1. Fluent content pack builder
+本文为规范性说明。若其他非正式示例与实际代码行为不一致，以运行时实现为准。
 
-Use [Scaffolding/Content/ModContentPackBuilder.cs](../Scaffolding/Content/ModContentPackBuilder.cs) through `RitsuLibFramework.CreateContentPack(modId)`:
+## Registration APIs / 注册接口
 
-```csharp
-RitsuLibFramework.CreateContentPack(MyMod.Id)
-    .Character<MyCharacter>()
-    .Card<MyCardPool, MyStrike>()
-    .Card<MyCardPool, MyDefend>()
-    .Relic<MyRelicPool, MyStarterRelic>()
-    .Potion<MyPotionPool, MyPotion>()
-    .Power<MyPower>()
-    .Orb<MyOrb>()
-    .CardKeyword("digging", iconPath: "res://images/ui/keywords/digging.png")
-    .Epoch<MyCharacter1Epoch>()
-    .Story<MyCharacterStory>()
-    .RequireEpoch<MyStrike, MyCharacter1Epoch>()
-    .UnlockEpochAfterRunAs<Ironclad, MyCharacter1Epoch>()
-    .Apply();
-```
+RitsuLib exposes the following registration entry points:
 
-### 2. Asset profiles
+RitsuLib 提供以下注册入口：
 
-Use [Scaffolding/Content/ContentAssetProfiles.cs](../Scaffolding/Content/ContentAssetProfiles.cs) to opt into convention-based assets.
+- `RitsuLibFramework.CreateContentPack(modId)`
+- `RitsuLibFramework.GetContentRegistry(modId)`
+- `RitsuLibFramework.GetKeywordRegistry(modId)`
+- `RitsuLibFramework.GetTimelineRegistry(modId)`
+- `RitsuLibFramework.GetUnlockRegistry(modId)`
 
-#### Card example
+`CreateContentPack(modId)` is a convenience wrapper. It does not define a different runtime rule set.
 
-```csharp
-public sealed class MyStrike : ModCardTemplate
-{
-    public MyStrike() : base(1, CardType.Attack, CardRarity.Common, TargetType.Enemy)
-    {
-    }
+`CreateContentPack(modId)` 只是便捷封装，不定义另一套独立的运行时规则。
 
-    public override CardAssetProfile AssetProfile =>
-        ContentAssetProfiles.Card("winefox", "winefox_strike") with
-        {
-            FramePath = "res://images/ui/cards/winefox_attack_frame.png",
-            PortraitBorderPath = "res://images/ui/cards/winefox_border.png"
-        };
-}
-```
+## Supported registration categories / 支持的注册类别
 
-#### Relic example
+The content pack builder defined in [Scaffolding/Content/ModContentPackBuilder.cs](../Scaffolding/Content/ModContentPackBuilder.cs) supports the following registration categories:
 
-```csharp
-public sealed class MyRelic : ModRelicTemplate
-{
-    public override RelicAssetProfile AssetProfile =>
-        ContentAssetProfiles.Relic("hand_crank");
-}
-```
+[Scaffolding/Content/ModContentPackBuilder.cs](../Scaffolding/Content/ModContentPackBuilder.cs) 中定义的内容包构建器支持以下注册类别：
 
-#### Power example
+- character
+- card
+- relic
+- potion
+- power
+- orb
+- shared event
+- act event
+- shared ancient
+- act ancient
+- keyword
+- story
+- epoch
+- unlock rule
 
-```csharp
-public sealed class MyPower : ModPowerTemplate
-{
-    public override PowerAssetProfile AssetProfile =>
-        ContentAssetProfiles.Power("stress_power");
-}
-```
+The builder executes registered steps in insertion order when `Apply()` is called.
 
-#### Orb example
+构建器在调用 `Apply()` 时按添加顺序执行各个注册步骤。
 
-```csharp
-public sealed class MyOrb : ModOrbTemplate
-{
-    public override OrbAssetProfile AssetProfile =>
-        ContentAssetProfiles.Orb("glass") with
-        {
-            VisualsScenePath = "res://scenes/orbs/custom_glass_orb.tscn"
-        };
-}
-```
+## Registration timing / 注册时机
 
-#### Potion example
+All content registration must be completed before the framework freezes content registration.
 
-```csharp
-public sealed class MyPotion : ModPotionTemplate
-{
-    public override PotionAssetProfile AssetProfile =>
-        ContentAssetProfiles.Potion("my_potion");
-}
-```
+所有内容注册必须在框架冻结内容注册之前完成。
 
-### 3. Card dynamic var toolkit
+After registration is frozen, additional content registration is invalid and may throw.
 
-See [CardDynamicVarToolkit.md](CardDynamicVarToolkit.md).
+内容注册冻结后，继续注册内容属于无效操作，并且可能抛出异常。
 
-RitsuLib only provides generic dynamic var creation helpers plus tooltip registration and cloning support.
+## Model id rule / 模型 id 规则
 
-## Runtime support now included
+For models registered through the RitsuLib content registry, `ModelId.Entry` uses the following fixed format:
 
-RitsuLib now patches the game to allow template-based overrides for:
+对于通过 RitsuLib 内容注册器注册的模型，`ModelId.Entry` 使用以下固定格式：
 
-- card portrait / beta portrait / frame / border / energy icon / frame material
-- relic icon / outline / big icon
+- `<modid>_<category>_<typename>`
+
+Each segment is normalized to an uppercase underscore-separated identifier.
+
+每个字段都会被规范化为全大写、以下划线分隔的标识符。
+
+For mod id `STS2-WineFox`, examples are:
+
+以 mod id `STS2-WineFox` 为例：
+
+- `WineFoxStrike` card -> `STS2_WINE_FOX_CARD_WINE_FOX_STRIKE`
+- `HandCrank` relic -> `STS2_WINE_FOX_RELIC_HAND_CRANK`
+- `WineFox` character -> `STS2_WINE_FOX_CHARACTER_WINE_FOX`
+
+If two registered models under the same mod id and the same model category share the same CLR type name, they resolve to the same entry and must be renamed.
+
+如果同一 mod id、同一模型类别下有两个已注册模型共享相同 CLR 类型名，则它们会解析为同一 entry，必须通过重命名解决。
+
+## Localization rule / 本地化规则
+
+Game localization keys are written directly against the fixed `ModelId.Entry` defined above.
+
+游戏本地化 key 直接基于上文定义的固定 `ModelId.Entry` 编写。
+
+Examples:
+
+示例：
+
+- `STS2_WINE_FOX_CARD_WINE_FOX_STRIKE.title`
+- `STS2_WINE_FOX_CARD_WINE_FOX_STRIKE.description`
+- `STS2_WINE_FOX_RELIC_HAND_CRANK.title`
+- `STS2_WINE_FOX_CHARACTER_WINE_FOX.title`
+
+`RitsuLibFramework.CreateModLocalization(...)` is separate from the game's `LocString` model-key pipeline.
+
+`RitsuLibFramework.CreateModLocalization(...)` 与游戏的 `LocString` 模型 key 管线相互独立。
+
+## Asset override rule / 资源覆写规则
+
+RitsuLib provides template-based asset override support through the interfaces and patches defined under [Scaffolding/Content/Patches/ContentAssetOverridePatches.cs](../Scaffolding/Content/Patches/ContentAssetOverridePatches.cs).
+
+RitsuLib 通过 [Scaffolding/Content/Patches/ContentAssetOverridePatches.cs](../Scaffolding/Content/Patches/ContentAssetOverridePatches.cs) 中定义的接口与补丁提供基于模板的资源覆写支持。
+
+Supported asset override categories are:
+
+支持的资源覆写类别包括：
+
+- card portrait / beta portrait / frame / portrait border / energy icon / frame material
+- relic icon / icon outline / big icon
 - power icon / big icon
 - orb icon / visuals scene
 - potion image / outline
 
-## Recommended author flow
+An override is applied only when all of the following conditions are satisfied:
 
-1. create pools using `TypeListCardPoolModel`, `TypeListRelicPoolModel`, `TypeListPotionPoolModel`
-2. derive content from the `Mod*Template` base classes
-3. configure predictable resources via `ContentAssetProfiles`
-4. register everything in one chain with `CreateContentPack(modId)`
-5. add unlock requirements and stories in the same builder chain
+只有在满足以下全部条件时，资源覆写才会生效：
 
-## Notes
+1. the model implements the matching override interface, directly or through a matching `Mod*Template`
+2. the override member returns a non-empty path
+3. the referenced resource exists when existence is required by the patch
+1. 模型直接实现了对应的 override 接口，或通过匹配的 `Mod*Template` 间接实现
+2. override 成员返回非空路径
+3. 在对应补丁要求存在性校验时，被引用资源实际存在
 
-- asset overrides only activate when the implementing type derives from the corresponding `Mod*Template` or otherwise implements the matching `IMod*AssetOverrides` interface
-- all registration still must happen before content registration is frozen
-- the builder is only a convenience layer; direct registry access remains supported
+## Compatibility rule / 兼容规则
+
+RitsuLib applies its fixed-entry rule only to model types explicitly registered through the RitsuLib content registry.
+
+RitsuLib 的固定 entry 规则只作用于那些通过 RitsuLib 内容注册器显式注册的模型类型。
+
+The fixed-entry rule is applied at `ModelDb.GetEntry(Type)`.
+
+固定 entry 规则的处理点为 `ModelDb.GetEntry(Type)`。
+
+## Related documents / 相关文档
+
+- [CharacterAndUnlockScaffolding.md](CharacterAndUnlockScaffolding.md)
+- [CardDynamicVarToolkit.md](CardDynamicVarToolkit.md)

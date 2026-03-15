@@ -10,11 +10,11 @@ namespace STS2RitsuLib.Scaffolding.Content
         protected virtual IEnumerable<string> RegisteredKeywordIds => [];
         protected virtual IEnumerable<IHoverTip> AdditionalHoverTips => [];
         protected virtual bool IncludeEnergyHoverTip => false;
+
+        protected sealed override IEnumerable<IHoverTip> ExtraHoverTips => BuildExtraHoverTips();
         public virtual PowerAssetProfile AssetProfile => PowerAssetProfile.Empty;
         public virtual string? CustomIconPath => AssetProfile.IconPath;
         public virtual string? CustomBigIconPath => AssetProfile.BigIconPath;
-
-        protected sealed override IEnumerable<IHoverTip> ExtraHoverTips => BuildExtraHoverTips();
 
         private List<IHoverTip> BuildExtraHoverTips()
         {

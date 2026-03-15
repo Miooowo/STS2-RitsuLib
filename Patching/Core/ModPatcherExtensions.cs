@@ -13,22 +13,6 @@ namespace STS2RitsuLib.Patching.Core
         extension(ModPatcher patcher)
         {
             /// <summary>
-            ///     Register a multi-target patch (same patch for multiple targets).
-            /// </summary>
-            public void RegisterMultiTarget(MultiTargetModPatchInfo multiModPatch)
-            {
-                patcher.RegisterPatches(multiModPatch.ToPatchInfos());
-            }
-
-            /// <summary>
-            ///     Register a composite patch (multiple patches for same target).
-            /// </summary>
-            public void RegisterComposite(CompositeModPatchInfo compositeModPatch)
-            {
-                patcher.RegisterPatches(compositeModPatch.ToPatchInfos());
-            }
-
-            /// <summary>
             ///     Register patches generated from a rule.
             /// </summary>
             public void RegisterFromRule(ModPatchRule rule,

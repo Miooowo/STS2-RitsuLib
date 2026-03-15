@@ -1,3 +1,4 @@
+using System.Reflection;
 using Godot;
 using MegaCrit.Sts2.Core.Models;
 using STS2RitsuLib.Patching.Models;
@@ -6,6 +7,7 @@ namespace STS2RitsuLib.Scaffolding.Content.Patches
 {
     internal static class ContentAssetOverridePatchHelper
     {
+        // ReSharper disable once InconsistentNaming
         internal static bool TryUseStringOverride<TOverrides>(
             object instance,
             ref string __result,
@@ -23,6 +25,7 @@ namespace STS2RitsuLib.Scaffolding.Content.Patches
             return false;
         }
 
+        // ReSharper disable once InconsistentNaming
         internal static bool TryUseTextureOverride<TOverrides>(
             object instance,
             ref Texture2D __result,
@@ -32,10 +35,11 @@ namespace STS2RitsuLib.Scaffolding.Content.Patches
             if (!TryGetPath(instance, selector, out var path))
                 return true;
 
-            __result = ResourceLoader.Load<Texture2D>(path, null, ResourceLoader.CacheMode.Reuse);
+            __result = ResourceLoader.Load<Texture2D>(path);
             return false;
         }
 
+        // ReSharper disable once InconsistentNaming
         internal static bool TryUseCompressedTextureOverride<TOverrides>(
             object instance,
             ref CompressedTexture2D __result,
@@ -45,10 +49,11 @@ namespace STS2RitsuLib.Scaffolding.Content.Patches
             if (!TryGetPath(instance, selector, out var path))
                 return true;
 
-            __result = ResourceLoader.Load<CompressedTexture2D>(path, null, ResourceLoader.CacheMode.Reuse);
+            __result = ResourceLoader.Load<CompressedTexture2D>(path);
             return false;
         }
 
+        // ReSharper disable once InconsistentNaming
         internal static bool TryUseMaterialOverride<TOverrides>(
             object instance,
             ref Material __result,
@@ -58,10 +63,11 @@ namespace STS2RitsuLib.Scaffolding.Content.Patches
             if (!TryGetPath(instance, selector, out var path))
                 return true;
 
-            __result = ResourceLoader.Load<Material>(path, null, ResourceLoader.CacheMode.Reuse);
+            __result = ResourceLoader.Load<Material>(path);
             return false;
         }
 
+        // ReSharper disable once InconsistentNaming
         internal static bool TryUsePortraitPathList(IModCardAssetOverrides overrides, ref IEnumerable<string> __result)
         {
             var paths = new[] { overrides.CustomPortraitPath, overrides.CustomBetaPortraitPath }
@@ -76,6 +82,7 @@ namespace STS2RitsuLib.Scaffolding.Content.Patches
             return false;
         }
 
+        // ReSharper disable once InconsistentNaming
         internal static bool TryUseExistenceOverride(string? path, ref bool __result)
         {
             if (string.IsNullOrWhiteSpace(path))
@@ -141,19 +148,26 @@ namespace STS2RitsuLib.Scaffolding.Content.Patches
         public static string Description => "Allow mod cards to override CardModel portrait paths";
         public static bool IsCritical => false;
 
-        public static ModPatchTarget[] GetTargets() =>
-        [
-            new(typeof(CardModel), "get_PortraitPath"),
-            new(typeof(CardModel), "get_BetaPortraitPath")
-        ];
+        public static ModPatchTarget[] GetTargets()
+        {
+            return
+            [
+                new(typeof(CardModel), "get_PortraitPath"),
+                new(typeof(CardModel), "get_BetaPortraitPath"),
+            ];
+        }
 
-        public static bool Prefix(System.Reflection.MethodBase __originalMethod, CardModel __instance, ref string __result)
+        // ReSharper disable InconsistentNaming
+        public static bool Prefix(MethodBase __originalMethod, CardModel __instance, ref string __result)
+            // ReSharper restore InconsistentNaming
         {
             return __originalMethod.Name switch
             {
-                "get_PortraitPath" => ContentAssetOverridePatchHelper.TryUseStringOverride<IModCardAssetOverrides>(__instance, ref __result, o => o.CustomPortraitPath),
-                "get_BetaPortraitPath" => ContentAssetOverridePatchHelper.TryUseStringOverride<IModCardAssetOverrides>(__instance, ref __result, o => o.CustomBetaPortraitPath),
-                _ => true
+                "get_PortraitPath" => ContentAssetOverridePatchHelper.TryUseStringOverride<IModCardAssetOverrides>(
+                    __instance, ref __result, o => o.CustomPortraitPath),
+                "get_BetaPortraitPath" => ContentAssetOverridePatchHelper.TryUseStringOverride<IModCardAssetOverrides>(
+                    __instance, ref __result, o => o.CustomBetaPortraitPath),
+                _ => true,
             };
         }
     }
@@ -164,22 +178,29 @@ namespace STS2RitsuLib.Scaffolding.Content.Patches
         public static string Description => "Allow mod cards to override CardModel portrait availability checks";
         public static bool IsCritical => false;
 
-        public static ModPatchTarget[] GetTargets() =>
-        [
-            new(typeof(CardModel), "get_HasPortrait"),
-            new(typeof(CardModel), "get_HasBetaPortrait")
-        ];
+        public static ModPatchTarget[] GetTargets()
+        {
+            return
+            [
+                new(typeof(CardModel), "get_HasPortrait"),
+                new(typeof(CardModel), "get_HasBetaPortrait"),
+            ];
+        }
 
-        public static bool Prefix(System.Reflection.MethodBase __originalMethod, CardModel __instance, ref bool __result)
+        // ReSharper disable InconsistentNaming
+        public static bool Prefix(MethodBase __originalMethod, CardModel __instance, ref bool __result)
+            // ReSharper restore InconsistentNaming
         {
             if (__instance is not IModCardAssetOverrides overrides)
                 return true;
 
             return __originalMethod.Name switch
             {
-                "get_HasPortrait" => ContentAssetOverridePatchHelper.TryUseExistenceOverride(overrides.CustomPortraitPath, ref __result),
-                "get_HasBetaPortrait" => ContentAssetOverridePatchHelper.TryUseExistenceOverride(overrides.CustomBetaPortraitPath, ref __result),
-                _ => true
+                "get_HasPortrait" => ContentAssetOverridePatchHelper.TryUseExistenceOverride(
+                    overrides.CustomPortraitPath, ref __result),
+                "get_HasBetaPortrait" => ContentAssetOverridePatchHelper.TryUseExistenceOverride(
+                    overrides.CustomBetaPortraitPath, ref __result),
+                _ => true,
             };
         }
     }
@@ -187,24 +208,35 @@ namespace STS2RitsuLib.Scaffolding.Content.Patches
     public class CardTextureOverridePatch : IPatchMethod
     {
         public static string PatchId => "content_asset_override_card_texture";
-        public static string Description => "Allow mod cards to override card frame, portrait border, and energy icon textures";
+
+        public static string Description =>
+            "Allow mod cards to override card frame, portrait border, and energy icon textures";
+
         public static bool IsCritical => false;
 
-        public static ModPatchTarget[] GetTargets() =>
-        [
-            new(typeof(CardModel), "get_Frame"),
-            new(typeof(CardModel), "get_PortraitBorder"),
-            new(typeof(CardModel), "get_EnergyIcon")
-        ];
+        public static ModPatchTarget[] GetTargets()
+        {
+            return
+            [
+                new(typeof(CardModel), "get_Frame"),
+                new(typeof(CardModel), "get_PortraitBorder"),
+                new(typeof(CardModel), "get_EnergyIcon"),
+            ];
+        }
 
-        public static bool Prefix(System.Reflection.MethodBase __originalMethod, CardModel __instance, ref Texture2D __result)
+        // ReSharper disable InconsistentNaming
+        public static bool Prefix(MethodBase __originalMethod, CardModel __instance, ref Texture2D __result)
+            // ReSharper restore InconsistentNaming
         {
             return __originalMethod.Name switch
             {
-                "get_Frame" => ContentAssetOverridePatchHelper.TryUseTextureOverride<IModCardAssetOverrides>(__instance, ref __result, o => o.CustomFramePath),
-                "get_PortraitBorder" => ContentAssetOverridePatchHelper.TryUseTextureOverride<IModCardAssetOverrides>(__instance, ref __result, o => o.CustomPortraitBorderPath),
-                "get_EnergyIcon" => ContentAssetOverridePatchHelper.TryUseTextureOverride<IModCardAssetOverrides>(__instance, ref __result, o => o.CustomEnergyIconPath),
-                _ => true
+                "get_Frame" => ContentAssetOverridePatchHelper.TryUseTextureOverride<IModCardAssetOverrides>(__instance,
+                    ref __result, o => o.CustomFramePath),
+                "get_PortraitBorder" => ContentAssetOverridePatchHelper.TryUseTextureOverride<IModCardAssetOverrides>(
+                    __instance, ref __result, o => o.CustomPortraitBorderPath),
+                "get_EnergyIcon" => ContentAssetOverridePatchHelper.TryUseTextureOverride<IModCardAssetOverrides>(
+                    __instance, ref __result, o => o.CustomEnergyIconPath),
+                _ => true,
             };
         }
     }
@@ -215,12 +247,17 @@ namespace STS2RitsuLib.Scaffolding.Content.Patches
         public static string Description => "Allow mod cards to override card frame materials";
         public static bool IsCritical => false;
 
-        public static ModPatchTarget[] GetTargets() =>
-        [
-            new(typeof(CardModel), "get_FrameMaterial")
-        ];
+        public static ModPatchTarget[] GetTargets()
+        {
+            return
+            [
+                new(typeof(CardModel), "get_FrameMaterial"),
+            ];
+        }
 
+        // ReSharper disable InconsistentNaming
         public static bool Prefix(CardModel __instance, ref Material __result)
+            // ReSharper restore InconsistentNaming
         {
             return ContentAssetOverridePatchHelper.TryUseMaterialOverride<IModCardAssetOverrides>(
                 __instance,
@@ -235,12 +272,17 @@ namespace STS2RitsuLib.Scaffolding.Content.Patches
         public static string Description => "Allow mod cards to advertise custom portrait assets for preloading";
         public static bool IsCritical => false;
 
-        public static ModPatchTarget[] GetTargets() =>
-        [
-            new(typeof(CardModel), "get_AllPortraitPaths")
-        ];
+        public static ModPatchTarget[] GetTargets()
+        {
+            return
+            [
+                new(typeof(CardModel), "get_AllPortraitPaths"),
+            ];
+        }
 
+        // ReSharper disable InconsistentNaming
         public static bool Prefix(CardModel __instance, ref IEnumerable<string> __result)
+            // ReSharper restore InconsistentNaming
         {
             return __instance is not IModCardAssetOverrides overrides ||
                    ContentAssetOverridePatchHelper.TryUsePortraitPathList(overrides, ref __result);
@@ -253,12 +295,17 @@ namespace STS2RitsuLib.Scaffolding.Content.Patches
         public static string Description => "Allow mod relics to override icon path assets";
         public static bool IsCritical => false;
 
-        public static ModPatchTarget[] GetTargets() =>
-        [
-            new(typeof(RelicModel), "get_IconPath")
-        ];
+        public static ModPatchTarget[] GetTargets()
+        {
+            return
+            [
+                new(typeof(RelicModel), "get_IconPath"),
+            ];
+        }
 
+        // ReSharper disable InconsistentNaming
         public static bool Prefix(RelicModel __instance, ref string __result)
+            // ReSharper restore InconsistentNaming
         {
             return ContentAssetOverridePatchHelper.TryUseStringOverride<IModRelicAssetOverrides>(
                 __instance,
@@ -273,21 +320,29 @@ namespace STS2RitsuLib.Scaffolding.Content.Patches
         public static string Description => "Allow mod relics to override icon textures";
         public static bool IsCritical => false;
 
-        public static ModPatchTarget[] GetTargets() =>
-        [
-            new(typeof(RelicModel), "get_Icon"),
-            new(typeof(RelicModel), "get_IconOutline"),
-            new(typeof(RelicModel), "get_BigIcon")
-        ];
+        public static ModPatchTarget[] GetTargets()
+        {
+            return
+            [
+                new(typeof(RelicModel), "get_Icon"),
+                new(typeof(RelicModel), "get_IconOutline"),
+                new(typeof(RelicModel), "get_BigIcon"),
+            ];
+        }
 
-        public static bool Prefix(System.Reflection.MethodBase __originalMethod, RelicModel __instance, ref Texture2D __result)
+        // ReSharper disable InconsistentNaming
+        public static bool Prefix(MethodBase __originalMethod, RelicModel __instance, ref Texture2D __result)
+            // ReSharper restore InconsistentNaming
         {
             return __originalMethod.Name switch
             {
-                "get_Icon" => ContentAssetOverridePatchHelper.TryUseTextureOverride<IModRelicAssetOverrides>(__instance, ref __result, o => o.CustomIconPath),
-                "get_IconOutline" => ContentAssetOverridePatchHelper.TryUseTextureOverride<IModRelicAssetOverrides>(__instance, ref __result, o => o.CustomIconOutlinePath),
-                "get_BigIcon" => ContentAssetOverridePatchHelper.TryUseTextureOverride<IModRelicAssetOverrides>(__instance, ref __result, o => o.CustomBigIconPath),
-                _ => true
+                "get_Icon" => ContentAssetOverridePatchHelper.TryUseTextureOverride<IModRelicAssetOverrides>(__instance,
+                    ref __result, o => o.CustomIconPath),
+                "get_IconOutline" => ContentAssetOverridePatchHelper.TryUseTextureOverride<IModRelicAssetOverrides>(
+                    __instance, ref __result, o => o.CustomIconOutlinePath),
+                "get_BigIcon" => ContentAssetOverridePatchHelper.TryUseTextureOverride<IModRelicAssetOverrides>(
+                    __instance, ref __result, o => o.CustomBigIconPath),
+                _ => true,
             };
         }
     }
@@ -298,12 +353,17 @@ namespace STS2RitsuLib.Scaffolding.Content.Patches
         public static string Description => "Allow mod powers to override icon path assets";
         public static bool IsCritical => false;
 
-        public static ModPatchTarget[] GetTargets() =>
-        [
-            new(typeof(PowerModel), "get_IconPath")
-        ];
+        public static ModPatchTarget[] GetTargets()
+        {
+            return
+            [
+                new(typeof(PowerModel), "get_IconPath"),
+            ];
+        }
 
+        // ReSharper disable InconsistentNaming
         public static bool Prefix(PowerModel __instance, ref string __result)
+            // ReSharper restore InconsistentNaming
         {
             return ContentAssetOverridePatchHelper.TryUseStringOverride<IModPowerAssetOverrides>(
                 __instance,
@@ -318,19 +378,26 @@ namespace STS2RitsuLib.Scaffolding.Content.Patches
         public static string Description => "Allow mod powers to override icon textures";
         public static bool IsCritical => false;
 
-        public static ModPatchTarget[] GetTargets() =>
-        [
-            new(typeof(PowerModel), "get_Icon"),
-            new(typeof(PowerModel), "get_BigIcon")
-        ];
+        public static ModPatchTarget[] GetTargets()
+        {
+            return
+            [
+                new(typeof(PowerModel), "get_Icon"),
+                new(typeof(PowerModel), "get_BigIcon"),
+            ];
+        }
 
-        public static bool Prefix(System.Reflection.MethodBase __originalMethod, PowerModel __instance, ref Texture2D __result)
+        // ReSharper disable InconsistentNaming
+        public static bool Prefix(MethodBase __originalMethod, PowerModel __instance, ref Texture2D __result)
+            // ReSharper restore InconsistentNaming
         {
             return __originalMethod.Name switch
             {
-                "get_Icon" => ContentAssetOverridePatchHelper.TryUseTextureOverride<IModPowerAssetOverrides>(__instance, ref __result, o => o.CustomIconPath),
-                "get_BigIcon" => ContentAssetOverridePatchHelper.TryUseTextureOverride<IModPowerAssetOverrides>(__instance, ref __result, o => o.CustomBigIconPath),
-                _ => true
+                "get_Icon" => ContentAssetOverridePatchHelper.TryUseTextureOverride<IModPowerAssetOverrides>(__instance,
+                    ref __result, o => o.CustomIconPath),
+                "get_BigIcon" => ContentAssetOverridePatchHelper.TryUseTextureOverride<IModPowerAssetOverrides>(
+                    __instance, ref __result, o => o.CustomBigIconPath),
+                _ => true,
             };
         }
     }
@@ -341,12 +408,17 @@ namespace STS2RitsuLib.Scaffolding.Content.Patches
         public static string Description => "Allow mod orbs to override icon textures";
         public static bool IsCritical => false;
 
-        public static ModPatchTarget[] GetTargets() =>
-        [
-            new(typeof(OrbModel), "get_Icon")
-        ];
+        public static ModPatchTarget[] GetTargets()
+        {
+            return
+            [
+                new(typeof(OrbModel), "get_Icon"),
+            ];
+        }
 
+        // ReSharper disable InconsistentNaming
         public static bool Prefix(OrbModel __instance, ref CompressedTexture2D __result)
+            // ReSharper restore InconsistentNaming
         {
             return ContentAssetOverridePatchHelper.TryUseCompressedTextureOverride<IModOrbAssetOverrides>(
                 __instance,
@@ -361,12 +433,17 @@ namespace STS2RitsuLib.Scaffolding.Content.Patches
         public static string Description => "Allow mod orbs to override visuals scene paths";
         public static bool IsCritical => false;
 
-        public static ModPatchTarget[] GetTargets() =>
-        [
-            new(typeof(OrbModel), "get_SpritePath")
-        ];
+        public static ModPatchTarget[] GetTargets()
+        {
+            return
+            [
+                new(typeof(OrbModel), "get_SpritePath"),
+            ];
+        }
 
+        // ReSharper disable InconsistentNaming
         public static bool Prefix(OrbModel __instance, ref string __result)
+            // ReSharper restore InconsistentNaming
         {
             return ContentAssetOverridePatchHelper.TryUseStringOverride<IModOrbAssetOverrides>(
                 __instance,
@@ -381,12 +458,17 @@ namespace STS2RitsuLib.Scaffolding.Content.Patches
         public static string Description => "Allow mod orbs to advertise custom asset paths";
         public static bool IsCritical => false;
 
-        public static ModPatchTarget[] GetTargets() =>
-        [
-            new(typeof(OrbModel), "get_AssetPaths")
-        ];
+        public static ModPatchTarget[] GetTargets()
+        {
+            return
+            [
+                new(typeof(OrbModel), "get_AssetPaths"),
+            ];
+        }
 
+        // ReSharper disable InconsistentNaming
         public static bool Prefix(OrbModel __instance, ref IEnumerable<string> __result)
+            // ReSharper restore InconsistentNaming
         {
             if (__instance is not IModOrbAssetOverrides overrides)
                 return true;
@@ -409,19 +491,26 @@ namespace STS2RitsuLib.Scaffolding.Content.Patches
         public static string Description => "Allow mod potions to override image paths";
         public static bool IsCritical => false;
 
-        public static ModPatchTarget[] GetTargets() =>
-        [
-            new(typeof(PotionModel), "get_ImagePath"),
-            new(typeof(PotionModel), "get_OutlinePath")
-        ];
+        public static ModPatchTarget[] GetTargets()
+        {
+            return
+            [
+                new(typeof(PotionModel), "get_ImagePath"),
+                new(typeof(PotionModel), "get_OutlinePath"),
+            ];
+        }
 
-        public static bool Prefix(System.Reflection.MethodBase __originalMethod, PotionModel __instance, ref string __result)
+        // ReSharper disable InconsistentNaming
+        public static bool Prefix(MethodBase __originalMethod, PotionModel __instance, ref string __result)
+            // ReSharper restore InconsistentNaming
         {
             return __originalMethod.Name switch
             {
-                "get_ImagePath" => ContentAssetOverridePatchHelper.TryUseStringOverride<IModPotionAssetOverrides>(__instance, ref __result, o => o.CustomImagePath),
-                "get_OutlinePath" => ContentAssetOverridePatchHelper.TryUseStringOverride<IModPotionAssetOverrides>(__instance, ref __result, o => o.CustomOutlinePath),
-                _ => true
+                "get_ImagePath" => ContentAssetOverridePatchHelper.TryUseStringOverride<IModPotionAssetOverrides>(
+                    __instance, ref __result, o => o.CustomImagePath),
+                "get_OutlinePath" => ContentAssetOverridePatchHelper.TryUseStringOverride<IModPotionAssetOverrides>(
+                    __instance, ref __result, o => o.CustomOutlinePath),
+                _ => true,
             };
         }
     }
@@ -432,19 +521,26 @@ namespace STS2RitsuLib.Scaffolding.Content.Patches
         public static string Description => "Allow mod potions to override image textures";
         public static bool IsCritical => false;
 
-        public static ModPatchTarget[] GetTargets() =>
-        [
-            new(typeof(PotionModel), "get_Image"),
-            new(typeof(PotionModel), "get_Outline")
-        ];
+        public static ModPatchTarget[] GetTargets()
+        {
+            return
+            [
+                new(typeof(PotionModel), "get_Image"),
+                new(typeof(PotionModel), "get_Outline"),
+            ];
+        }
 
-        public static bool Prefix(System.Reflection.MethodBase __originalMethod, PotionModel __instance, ref Texture2D __result)
+        // ReSharper disable InconsistentNaming
+        public static bool Prefix(MethodBase __originalMethod, PotionModel __instance, ref Texture2D __result)
+            // ReSharper restore InconsistentNaming
         {
             return __originalMethod.Name switch
             {
-                "get_Image" => ContentAssetOverridePatchHelper.TryUseTextureOverride<IModPotionAssetOverrides>(__instance, ref __result, o => o.CustomImagePath),
-                "get_Outline" => ContentAssetOverridePatchHelper.TryUseTextureOverride<IModPotionAssetOverrides>(__instance, ref __result, o => o.CustomOutlinePath),
-                _ => true
+                "get_Image" => ContentAssetOverridePatchHelper.TryUseTextureOverride<IModPotionAssetOverrides>(
+                    __instance, ref __result, o => o.CustomImagePath),
+                "get_Outline" => ContentAssetOverridePatchHelper.TryUseTextureOverride<IModPotionAssetOverrides>(
+                    __instance, ref __result, o => o.CustomOutlinePath),
+                _ => true,
             };
         }
     }

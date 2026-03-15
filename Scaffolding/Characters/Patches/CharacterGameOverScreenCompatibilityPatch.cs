@@ -139,7 +139,8 @@ namespace STS2RitsuLib.Scaffolding.Characters.Patches
                 creatureNode.AnimDisableUi();
             }
 
-            foreach (var creatureVisual in visuals.Where(creatureVisual => creatureVisual.GetParent() != creatureContainer))
+            foreach (var creatureVisual in visuals.Where(creatureVisual =>
+                         creatureVisual.GetParent() != creatureContainer))
                 creatureVisual.Reparent(creatureContainer);
         }
 

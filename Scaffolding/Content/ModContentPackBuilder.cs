@@ -19,8 +19,8 @@ namespace STS2RitsuLib.Scaffolding.Content
     /// </summary>
     public sealed class ModContentPackBuilder
     {
-        private readonly List<Action<ModContentPackContext>> _steps = [];
         private readonly string _modId;
+        private readonly List<Action<ModContentPackContext>> _steps = [];
 
         private ModContentPackBuilder(string modId)
         {
@@ -106,7 +106,8 @@ namespace STS2RitsuLib.Scaffolding.Content
             string? descriptionKey = null,
             string? iconPath = null)
         {
-            return AddStep(ctx => ctx.Keywords.Register(id, titleTable, titleKey, descriptionTable, descriptionKey, iconPath));
+            return AddStep(ctx =>
+                ctx.Keywords.Register(id, titleTable, titleKey, descriptionTable, descriptionKey, iconPath));
         }
 
         public ModContentPackBuilder Epoch<TEpoch>() where TEpoch : EpochModel, new()

@@ -177,6 +177,7 @@ namespace STS2RitsuLib
                     _frameworkPatcher.RegisterPatch<AllEventsPatch>();
                     _frameworkPatcher.RegisterPatch<AllSharedAncientsPatch>();
                     _frameworkPatcher.RegisterPatch<AllAncientsPatch>();
+                    _frameworkPatcher.RegisterPatch<ModelDbModdedEntryPatch>();
                     _frameworkPatcher.RegisterPatch<DynamicActContentPatchBootstrap>();
 
                     _frameworkPatcher.RegisterPatch<CharacterIconOutlineTexturePathPatch>();

@@ -23,7 +23,7 @@ namespace STS2RitsuLib.Diagnostics
             throw new InvalidOperationException(
                 $"ModelId collision detected for '{candidateId}'. Type '{candidateType.FullName}' conflicts with: " +
                 string.Join(", ", conflicts.Select(type => type.FullName)) +
-                ". STS2 builds ModelId from the model category and the slugified type name, so same-type-name models in the same category will collide.");
+                ". RitsuLib now formats registered model ids as '<modid>_<category>_<typename>', so a remaining collision usually means two registered models in the same mod/category still share the same CLR type name.");
         }
 
         internal static void ValidateAndLogModelIdCollisions()
@@ -40,7 +40,7 @@ namespace STS2RitsuLib.Diagnostics
 
             if (conflicts.Length > 0)
                 RitsuLibFramework.Logger.Error(
-                    "[Content] Duplicate model type names in the same model category are unsafe. The game derives ModelId from the type name, and later registrations may overwrite earlier ones in ModelDb.");
+                    "[Content] Duplicate patched ModelIds are unsafe. RitsuLib formats registered model ids as '<modid>_<category>_<typename>', so this usually indicates two registered models still share the same mod/category/type-name combination.");
         }
 
         internal static void ThrowIfEpochIdConflicts(string epochId, Type candidateType,

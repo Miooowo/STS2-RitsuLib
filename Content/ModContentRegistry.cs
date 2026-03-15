@@ -1,3 +1,5 @@
+using System.Text.RegularExpressions;
+using MegaCrit.Sts2.Core.Helpers;
 using MegaCrit.Sts2.Core.Logging;
 using MegaCrit.Sts2.Core.Modding;
 using MegaCrit.Sts2.Core.Models;
@@ -11,7 +13,7 @@ namespace STS2RitsuLib.Content
         Frozen = 1,
     }
 
-    public sealed class ModContentRegistry
+    public sealed partial class ModContentRegistry
     {
         private static readonly Lock SyncRoot = new();
 
@@ -26,6 +28,7 @@ namespace STS2RitsuLib.Content
         private static readonly HashSet<Type> RegisteredSharedAncients = [];
         private static readonly Dictionary<Type, HashSet<Type>> RegisteredActEvents = [];
         private static readonly Dictionary<Type, HashSet<Type>> RegisteredActAncients = [];
+        private static readonly Dictionary<Type, string> RegisteredTypeOwners = [];
 
         private readonly Logger _logger;
         private string? _freezeReason;
@@ -42,6 +45,41 @@ namespace STS2RitsuLib.Content
         public static ContentRegistrationState State => IsFrozen
             ? ContentRegistrationState.Frozen
             : ContentRegistrationState.Open;
+
+        public static bool TryGetOwnerModId(Type modelType, out string modId)
+        {
+            ArgumentNullException.ThrowIfNull(modelType);
+
+            lock (SyncRoot)
+            {
+                return RegisteredTypeOwners.TryGetValue(modelType, out modId!);
+            }
+        }
+
+        public static bool TryGetFixedPublicEntry(Type modelType, out string entry)
+        {
+            ArgumentNullException.ThrowIfNull(modelType);
+
+            if (!TryGetOwnerModId(modelType, out var modId))
+            {
+                entry = string.Empty;
+                return false;
+            }
+
+            entry = GetFixedPublicEntry(modId, modelType);
+            return true;
+        }
+
+        public static string GetFixedPublicEntry(string modId, Type modelType)
+        {
+            ArgumentException.ThrowIfNullOrWhiteSpace(modId);
+            ArgumentNullException.ThrowIfNull(modelType);
+
+            var modStem = NormalizePublicStem(modId);
+            var categoryStem = NormalizePublicStem(ModelDb.GetCategory(modelType));
+            var typeStem = NormalizePublicStem(modelType.Name);
+            return $"{modStem}_{categoryStem}_{typeStem}";
+        }
 
         public static ModContentRegistry For(string modId)
         {
@@ -204,6 +242,8 @@ namespace STS2RitsuLib.Content
             EnsureMutable($"register {contentKind} '{modelType.Name}' into pool '{poolType.Name}'");
             EnsureModelType(poolType, typeof(AbstractModel), nameof(poolType));
             EnsureModelType(modelType, typeof(AbstractModel), nameof(modelType));
+            PrimeOwnedType(poolType);
+            PrimeOwnedType(modelType);
             RegistrationConflictDetector.ThrowIfModelIdConflicts(poolType);
             RegistrationConflictDetector.ThrowIfModelIdConflicts(modelType);
 
@@ -215,6 +255,9 @@ namespace STS2RitsuLib.Content
                         $"[Content] Skipping duplicate {contentKind} registration: {modelType.Name} -> {poolType.Name}");
                     return;
                 }
+
+                RememberOwner(poolType);
+                RememberOwner(modelType);
             }
 
             ModHelper.AddModelToPool(poolType, modelType);
@@ -229,6 +272,7 @@ namespace STS2RitsuLib.Content
         {
             EnsureMutable($"register {contentKind} '{modelType.Name}'");
             EnsureModelType(modelType, expectedBaseType, nameof(modelType));
+            PrimeOwnedType(modelType);
             RegistrationConflictDetector.ThrowIfModelIdConflicts(modelType);
 
             lock (SyncRoot)
@@ -238,6 +282,8 @@ namespace STS2RitsuLib.Content
                     _logger.Debug($"[Content] Skipping duplicate {contentKind} registration: {modelType.Name}");
                     return;
                 }
+
+                RememberOwner(modelType);
             }
 
             _logger.Info($"[Content] Registered {contentKind}: {modelType.Name}");
@@ -254,6 +300,8 @@ namespace STS2RitsuLib.Content
             EnsureMutable($"register {contentKind} '{modelType.Name}' for '{scopeType.Name}'");
             EnsureModelType(scopeType, expectedScopeType, nameof(scopeType));
             EnsureModelType(modelType, expectedModelBaseType, nameof(modelType));
+            PrimeOwnedType(scopeType);
+            PrimeOwnedType(modelType);
             RegistrationConflictDetector.ThrowIfModelIdConflicts(scopeType);
             RegistrationConflictDetector.ThrowIfModelIdConflicts(modelType);
 
@@ -271,6 +319,9 @@ namespace STS2RitsuLib.Content
                         $"[Content] Skipping duplicate {contentKind} registration: {modelType.Name} -> {scopeType.Name}");
                     return;
                 }
+
+                RememberOwner(scopeType);
+                RememberOwner(modelType);
             }
 
             _logger.Info($"[Content] Registered {contentKind}: {modelType.Name} -> {scopeType.Name}");
@@ -295,7 +346,7 @@ namespace STS2RitsuLib.Content
                 );
         }
 
-        private static IEnumerable<TModel> ResolveModels<TModel>(IEnumerable<Type> modelTypes)
+        private static TModel[] ResolveModels<TModel>(IEnumerable<Type> modelTypes)
             where TModel : AbstractModel
         {
             lock (SyncRoot)
@@ -307,7 +358,7 @@ namespace STS2RitsuLib.Content
             }
         }
 
-        private static IEnumerable<TModel> ResolveScopedModels<TModel>(Dictionary<Type, HashSet<Type>> registry,
+        private static TModel[] ResolveScopedModels<TModel>(Dictionary<Type, HashSet<Type>> registry,
             Type scopeType)
             where TModel : AbstractModel
         {
@@ -322,11 +373,47 @@ namespace STS2RitsuLib.Content
             }
         }
 
-        private static IEnumerable<TModel> AppendResolved<TModel>(IEnumerable<TModel> source,
+        private static TModel[] AppendResolved<TModel>(IEnumerable<TModel> source,
             IEnumerable<TModel> additional)
             where TModel : AbstractModel
         {
             return source.Concat(additional).Distinct().ToArray();
+        }
+
+        private static string NormalizePublicStem(string value)
+        {
+            ArgumentException.ThrowIfNullOrWhiteSpace(value);
+
+            var normalized = NonAlphaNumericRegex().Replace(value.Trim(), "_");
+            normalized = AcronymBoundaryRegex().Replace(normalized, "$1_$2");
+            normalized = CamelBoundaryRegex().Replace(normalized, "$1_$2");
+            normalized = RepeatedUnderscoreRegex().Replace(normalized, "_");
+            return normalized.Trim('_').ToUpperInvariant();
+        }
+
+        [GeneratedRegex("[^A-Za-z0-9]+")]
+        private static partial Regex NonAlphaNumericRegex();
+
+        [GeneratedRegex("([A-Z]+)([A-Z][a-z])")]
+        private static partial Regex AcronymBoundaryRegex();
+
+        [GeneratedRegex("([a-z0-9])([A-Z])")]
+        private static partial Regex CamelBoundaryRegex();
+
+        [GeneratedRegex("_+")]
+        private static partial Regex RepeatedUnderscoreRegex();
+
+        private void RememberOwner(Type type)
+        {
+            RegisteredTypeOwners[type] = ModId;
+        }
+
+        private void PrimeOwnedType(Type type)
+        {
+            lock (SyncRoot)
+            {
+                RegisteredTypeOwners[type] = ModId;
+            }
         }
     }
 }

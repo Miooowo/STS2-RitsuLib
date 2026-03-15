@@ -10,9 +10,6 @@ namespace STS2RitsuLib.Scaffolding.Content
     {
         protected virtual IEnumerable<string> RegisteredKeywordIds => [];
         protected virtual IEnumerable<IHoverTip> AdditionalHoverTips => [];
-        public virtual OrbAssetProfile AssetProfile => OrbAssetProfile.Empty;
-        public virtual string? CustomIconPath => AssetProfile.IconPath;
-        public virtual string? CustomVisualsScenePath => AssetProfile.VisualsScenePath;
 
         protected sealed override IEnumerable<IHoverTip> ExtraHoverTips =>
             AdditionalHoverTips
@@ -21,5 +18,8 @@ namespace STS2RitsuLib.Scaffolding.Content
                 .ToArray();
 
         public override Color DarkenedColor => Colors.DarkSlateGray;
+        public virtual OrbAssetProfile AssetProfile => OrbAssetProfile.Empty;
+        public virtual string? CustomIconPath => AssetProfile.IconPath;
+        public virtual string? CustomVisualsScenePath => AssetProfile.VisualsScenePath;
     }
 }

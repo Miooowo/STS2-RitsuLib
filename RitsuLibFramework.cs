@@ -116,6 +116,7 @@ namespace STS2RitsuLib
                 Logger.Info($"Framework Name: {Const.Name}");
                 Logger.Info($"Version: {Const.Version}");
                 Logger.Info("Initializing shared framework...");
+                RitsuLibSettingsStore.Initialize();
                 PublishLifecycleEvent(
                     new FrameworkInitializingEvent(Const.ModId, Const.Version, DateTimeOffset.UtcNow),
                     nameof(FrameworkInitializingEvent)

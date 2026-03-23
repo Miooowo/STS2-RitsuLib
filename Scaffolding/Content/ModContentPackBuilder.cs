@@ -260,7 +260,8 @@ namespace STS2RitsuLib.Scaffolding.Content
             foreach (var step in _steps)
                 step(context);
 
-            RitsuLibFramework.Logger.Info($"[ContentPack] Applied {_steps.Count} registration step(s) for '{_modId}'.");
+            RitsuLibFramework.CreateLogger(_modId)
+                .Info($"[ContentPack] Applied {_steps.Count} registration step(s).");
             return context;
         }
 

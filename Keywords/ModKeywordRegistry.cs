@@ -2,6 +2,7 @@ using Godot;
 using MegaCrit.Sts2.Core.Helpers;
 using MegaCrit.Sts2.Core.HoverTips;
 using MegaCrit.Sts2.Core.Localization;
+using Logger = MegaCrit.Sts2.Core.Logging.Logger;
 
 namespace STS2RitsuLib.Keywords
 {
@@ -15,11 +16,14 @@ namespace STS2RitsuLib.Keywords
         private static readonly Dictionary<string, ModKeywordDefinition> Definitions =
             new(StringComparer.OrdinalIgnoreCase);
 
+        private readonly Logger _logger;
+
         private readonly string _modId;
 
         private ModKeywordRegistry(string modId)
         {
             _modId = modId;
+            _logger = RitsuLibFramework.CreateLogger(modId);
         }
 
         public static ModKeywordRegistry For(string modId)
@@ -72,7 +76,7 @@ namespace STS2RitsuLib.Keywords
                 Definitions[normalizedId] = definition;
             }
 
-            RitsuLibFramework.Logger.Info($"[Keywords] Registered keyword: {normalizedId} ({_modId})");
+            _logger.Info($"[Keywords] Registered keyword: {normalizedId}");
             return definition;
         }
 

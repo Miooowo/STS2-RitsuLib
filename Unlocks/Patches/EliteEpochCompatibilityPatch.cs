@@ -78,11 +78,8 @@ namespace STS2RitsuLib.Unlocks.Patches
                 if (!eliteEncounters.Contains(encounter.Id))
                     continue;
 
-                foreach (var fightStat in encounter.FightStats)
+                foreach (var fightStat in encounter.FightStats.Where(fightStat => fightStat.Character == characterId))
                 {
-                    if (fightStat.Character != characterId)
-                        continue;
-
                     totalWins += fightStat.Wins;
                     break;
                 }

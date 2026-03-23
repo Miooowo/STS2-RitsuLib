@@ -191,7 +191,9 @@ namespace STS2RitsuLib.Content
                     registry._freezeReason = reason;
             }
 
-            RitsuLibFramework.Logger.Info($"[Content] Content registration is now frozen ({reason}).");
+            foreach (var registry in Registries.Values)
+                registry._logger.Info($"[Content] Content registration is now frozen ({reason}).");
+
             RitsuLibFramework.PublishLifecycleEvent(
                 new ContentRegistrationClosedEvent(reason, DateTimeOffset.UtcNow),
                 nameof(ContentRegistrationClosedEvent)
@@ -233,7 +235,8 @@ namespace STS2RitsuLib.Content
             return AppendResolved(source, ResolveScopedModels<EventModel>(RegisteredActEvents, act.GetType()));
         }
 
-        internal static IEnumerable<EncounterModel> AppendActEncounters(ActModel act, IEnumerable<EncounterModel> source)
+        internal static IEnumerable<EncounterModel> AppendActEncounters(ActModel act,
+            IEnumerable<EncounterModel> source)
         {
             return AppendResolved(source, ResolveScopedModels<EncounterModel>(RegisteredActEncounters, act.GetType()));
         }

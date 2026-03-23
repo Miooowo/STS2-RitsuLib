@@ -18,6 +18,7 @@ namespace STS2RitsuLib.Unlocks
 
         private static readonly Dictionary<ModelId, string> RequiredEpochsByModelId = [];
         private static readonly List<PostRunEpochUnlockRule> PostRunRules = [];
+        private static readonly Dictionary<ModelId, EliteEpochUnlockRule> EliteEpochRulesByCharacterId = [];
 
         private string? _freezeReason;
 
@@ -122,6 +123,29 @@ namespace STS2RitsuLib.Unlocks
             }
         }
 
+        public void UnlockEpochAfterEliteVictories<TCharacter, TEpoch>(int requiredEliteWins = 15)
+            where TCharacter : CharacterModel
+            where TEpoch : EpochModel, new()
+        {
+            RegisterEliteEpochRule(
+                EliteEpochUnlockRule.Create(
+                    ModelDb.GetId<TCharacter>(),
+                    new TEpoch().Id,
+                    requiredEliteWins,
+                    $"Unlock {typeof(TEpoch).Name} after defeating {requiredEliteWins} elite(s) as {typeof(TCharacter).Name}"));
+        }
+
+        public void RegisterEliteEpochRule(EliteEpochUnlockRule rule)
+        {
+            EnsureMutable($"register elite epoch rule '{rule.Description}'");
+            ArgumentNullException.ThrowIfNull(rule);
+
+            lock (SyncRoot)
+            {
+                EliteEpochRulesByCharacterId[rule.CharacterId] = rule;
+            }
+        }
+
         internal static void FreezeRegistrations(string reason)
         {
             lock (SyncRoot)
@@ -149,6 +173,14 @@ namespace STS2RitsuLib.Unlocks
             where TModel : AbstractModel
         {
             return source.Where(model => IsUnlocked(model, unlockState)).ToArray();
+        }
+
+        internal static bool TryGetEliteEpochRule(ModelId characterId, out EliteEpochUnlockRule rule)
+        {
+            lock (SyncRoot)
+            {
+                return EliteEpochRulesByCharacterId.TryGetValue(characterId, out rule!);
+            }
         }
 
         internal static void ProcessRunEnded(RunManager runManager, SerializableRun serializableRun, bool isVictory,
@@ -235,6 +267,25 @@ namespace STS2RitsuLib.Unlocks
             ArgumentException.ThrowIfNullOrWhiteSpace(description);
             ArgumentNullException.ThrowIfNull(shouldUnlock);
             return new(epochId, description, shouldUnlock);
+        }
+    }
+
+    public sealed record EliteEpochUnlockRule(
+        ModelId CharacterId,
+        string EpochId,
+        int RequiredEliteWins,
+        string Description)
+    {
+        public static EliteEpochUnlockRule Create(
+            ModelId characterId,
+            string epochId,
+            int requiredEliteWins,
+            string description)
+        {
+            ArgumentException.ThrowIfNullOrWhiteSpace(epochId);
+            ArgumentOutOfRangeException.ThrowIfLessThan(requiredEliteWins, 1);
+            ArgumentException.ThrowIfNullOrWhiteSpace(description);
+            return new(characterId, epochId, requiredEliteWins, description);
         }
     }
 }

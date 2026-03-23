@@ -159,6 +159,13 @@ namespace STS2RitsuLib.Scaffolding.Content
             return AddStep(ctx => ctx.Unlocks.UnlockEpochAfterRunCount<TEpoch>(requiredRuns, requireVictory));
         }
 
+        public ModContentPackBuilder UnlockEpochAfterEliteVictories<TCharacter, TEpoch>(int requiredEliteWins = 15)
+            where TCharacter : CharacterModel
+            where TEpoch : EpochModel, new()
+        {
+            return AddStep(ctx => ctx.Unlocks.UnlockEpochAfterEliteVictories<TCharacter, TEpoch>(requiredEliteWins));
+        }
+
         public ModContentPackBuilder Entry(IContentRegistrationEntry entry)
         {
             ArgumentNullException.ThrowIfNull(entry);

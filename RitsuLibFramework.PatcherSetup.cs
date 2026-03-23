@@ -174,6 +174,7 @@ namespace STS2RitsuLib
             patcher.RegisterPatch<RelicUnlockFilterPatch>();
             patcher.RegisterPatch<PotionUnlockFilterPatch>();
             patcher.RegisterPatch<GeneratedRoomEventUnlockFilterPatch>();
+            patcher.RegisterPatch<EliteEpochCompatibilityPatch>();
             RegisterFrameworkPatcher(FrameworkPatcherArea.Unlocks, patcher);
         }
 

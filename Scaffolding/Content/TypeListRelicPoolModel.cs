@@ -3,9 +3,12 @@ using STS2RitsuLib.Scaffolding.Content.Patches;
 
 namespace STS2RitsuLib.Scaffolding.Content
 {
-    public abstract class TypeListRelicPoolModel : RelicPoolModel, IModTextEnergyIconPool
+    public abstract class TypeListRelicPoolModel : RelicPoolModel, IModBigEnergyIconPool, IModTextEnergyIconPool
     {
         protected abstract IEnumerable<Type> RelicTypes { get; }
+
+        /// <inheritdoc cref="IModBigEnergyIconPool.BigEnergyIconPath" />
+        public virtual string? BigEnergyIconPath => null;
 
         /// <inheritdoc cref="IModTextEnergyIconPool.TextEnergyIconPath" />
         public virtual string? TextEnergyIconPath => null;

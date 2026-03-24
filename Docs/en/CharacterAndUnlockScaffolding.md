@@ -73,11 +73,34 @@ public class WineFoxCardPool : TypeListCardPoolModel
 
 If you prefer path-based configuration, simply leave `PoolFrameMaterial` as `null` and override `CardFrameMaterialPath` instead.
 
+### Configure Pool Energy Icons
+
+`TypeList*PoolModel` also exposes pooled energy icon hooks:
+
+- `BigEnergyIconPath`: the large icon resolved through `EnergyIconHelper`
+- `TextEnergyIconPath`: the small inline icon used in rich-text card descriptions
+
+```csharp
+public class WineFoxCardPool : TypeListCardPoolModel
+{
+    protected override IEnumerable<Type> CardTypes =>
+    [
+        typeof(WineFoxStrike),
+        typeof(WineFoxDefend),
+    ];
+
+    public override string? BigEnergyIconPath => "res://WineFox/ui/energy/winefox_energy_big.png";
+    public override string? TextEnergyIconPath => "res://WineFox/ui/energy/winefox_energy_text.png";
+}
+```
+
 ---
 
 ## Character Template
 
-Inherit `ModCharacterTemplate<TCardPool, TRelicPool, TPotionPool>` and provide the starting deck, relics, and asset paths:
+Inherit `ModCharacterTemplate<TCardPool, TRelicPool, TPotionPool>` and provide the starting deck plus any custom assets you actually want to replace.
+
+Unspecified character assets automatically fall back to `PlaceholderCharacterId`, which defaults to `ironclad`.
 
 ```csharp
 public class WineFoxCharacter : ModCharacterTemplate<WineFoxCardPool, WineFoxRelicPool, WineFoxPotionPool>
@@ -93,14 +116,20 @@ public class WineFoxCharacter : ModCharacterTemplate<WineFoxCardPool, WineFoxRel
         typeof(WineFoxStarterRelic),
     ];
 
-    public override CharacterAssetProfile AssetProfile => new()
-    {
-        CombatSpineSkeletonDataPath = "res://WineFox/spine/wine_fox.tres",
-        IconTexturePath             = "res://WineFox/art/icon.png",
-        CharacterSelectBgPath       = "res://WineFox/art/select_bg.png",
-    };
+    public override string? PlaceholderCharacterId => "ironclad";
+
+    public override CharacterAssetProfile AssetProfile => new(
+        Spine: new(
+            CombatSkeletonDataPath: "res://WineFox/spine/wine_fox.tres"),
+        Ui: new(
+            IconTexturePath: "res://WineFox/art/icon.png",
+            CharacterSelectBgPath: "res://WineFox/art/select_bg.tscn"),
+        Scenes: new(
+            RestSiteAnimPath: "res://WineFox/scenes/rest_site/winefox_rest_site.tscn"));
 }
 ```
+
+Override `PlaceholderCharacterId` with another base character such as `silent` or `defect` if you want their merchant / rest-site / map marker / default SFX alignment instead. Return `null` if you want strict no-fallback behavior.
 
 ---
 
@@ -114,6 +143,19 @@ public class WineFoxStory : ModStoryTemplate
     public override Type CharacterType => typeof(WineFoxCharacter);
 }
 ```
+
+### Ancient Dialogue Localization
+
+RitsuLib now auto-appends localization-defined ancient dialogues for registered mod characters before `AncientDialogueSet.PopulateLocKeys` runs.
+
+Use the same key pattern as the base game:
+
+- dialogue lines: `<ancientEntry>.talk.<characterEntry>.<dialogueIndex>-<lineIndex>[r].ancient|char`
+- optional SFX: append `.sfx`
+- optional visit override: append `-visit`
+- architect-only attack override: append `-attack`
+
+If you need the helpers directly, see `STS2RitsuLib.Localization.AncientDialogueLocalization`.
 
 ---
 

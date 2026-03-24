@@ -73,11 +73,34 @@ public class WineFoxCardPool : TypeListCardPoolModel
 
 若你希望继续走资源路径模式，也可以不覆盖 `PoolFrameMaterial`，仅覆盖 `CardFrameMaterialPath`。
 
+### 配置池能量图标
+
+`TypeList*PoolModel` 现在也支持统一配置能量图标：
+
+- `BigEnergyIconPath`：通过 `EnergyIconHelper` 解析的大图标
+- `TextEnergyIconPath`：卡牌描述富文本里使用的小图标
+
+```csharp
+public class WineFoxCardPool : TypeListCardPoolModel
+{
+    protected override IEnumerable<Type> CardTypes =>
+    [
+        typeof(WineFoxStrike),
+        typeof(WineFoxDefend),
+    ];
+
+    public override string? BigEnergyIconPath => "res://WineFox/ui/energy/winefox_energy_big.png";
+    public override string? TextEnergyIconPath => "res://WineFox/ui/energy/winefox_energy_text.png";
+}
+```
+
 ---
 
 ## 角色模板
 
-继承 `ModCharacterTemplate<TCardPool, TRelicPool, TPotionPool>`，指定三个池类型参数，并声明初始牌组、起始遗物和资源路径：
+继承 `ModCharacterTemplate<TCardPool, TRelicPool, TPotionPool>`，指定三个池类型参数，并声明初始牌组以及你真正想替换的资源即可。
+
+未填写的角色资源会自动回退到 `PlaceholderCharacterId`，默认值为 `ironclad`。
 
 ```csharp
 public class WineFoxCharacter : ModCharacterTemplate<WineFoxCardPool, WineFoxRelicPool, WineFoxPotionPool>
@@ -95,15 +118,21 @@ public class WineFoxCharacter : ModCharacterTemplate<WineFoxCardPool, WineFoxRel
         typeof(WineFoxStarterRelic),
     ];
 
+    public override string? PlaceholderCharacterId => "ironclad";
+
     // 资源路径（使用 AssetProfile 统一配置）
-    public override CharacterAssetProfile AssetProfile => new()
-    {
-        CombatSpineSkeletonDataPath = "res://WineFox/spine/wine_fox.tres",
-        IconTexturePath             = "res://WineFox/art/icon.png",
-        CharacterSelectBgPath       = "res://WineFox/art/select_bg.png",
-    };
+    public override CharacterAssetProfile AssetProfile => new(
+        Spine: new(
+            CombatSkeletonDataPath: "res://WineFox/spine/wine_fox.tres"),
+        Ui: new(
+            IconTexturePath: "res://WineFox/art/icon.png",
+            CharacterSelectBgPath: "res://WineFox/art/select_bg.tscn"),
+        Scenes: new(
+            RestSiteAnimPath: "res://WineFox/scenes/rest_site/winefox_rest_site.tscn"));
 }
 ```
+
+如果你更想继承 `silent`、`defect` 等角色的商人 / 休息点 / 小地图 / 默认音效风格，可以改写 `PlaceholderCharacterId`。若你想关闭这层兜底，可返回 `null`。
 
 ---
 
@@ -117,6 +146,19 @@ public class WineFoxStory : ModStoryTemplate
     public override Type CharacterType => typeof(WineFoxCharacter);
 }
 ```
+
+### Ancient 对话本地化
+
+RitsuLib 现在会在 `AncientDialogueSet.PopulateLocKeys` 之前，自动为已注册的 Mod 角色追加基于本地化定义的 Ancient 对话。
+
+Key 格式与原版保持一致：
+
+- 对话行：`<ancientEntry>.talk.<characterEntry>.<dialogueIndex>-<lineIndex>[r].ancient|char`
+- 可选音效：末尾追加 `.sfx`
+- 可选 visit 覆盖：末尾追加 `-visit`
+- Architect 专用攻击者覆盖：末尾追加 `-attack`
+
+如果你需要直接操作这些工具方法，可使用 `STS2RitsuLib.Localization.AncientDialogueLocalization`。
 
 ---
 

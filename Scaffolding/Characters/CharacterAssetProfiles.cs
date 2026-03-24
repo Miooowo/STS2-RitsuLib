@@ -2,6 +2,8 @@ namespace STS2RitsuLib.Scaffolding.Characters
 {
     public static class CharacterAssetProfiles
     {
+        public const string DefaultPlaceholderCharacterId = "ironclad";
+
         public static CharacterAssetProfile FromCharacterId(string characterId)
         {
             ArgumentException.ThrowIfNullOrWhiteSpace(characterId);
@@ -38,6 +40,30 @@ namespace STS2RitsuLib.Scaffolding.Characters
                     $"res://images/ui/hands/multiplayer_hand_{id}_scissors.png"));
         }
 
+        public static CharacterAssetProfile Resolve(CharacterAssetProfile? profile, string? placeholderCharacterId)
+        {
+            profile ??= CharacterAssetProfile.Empty;
+
+            if (string.IsNullOrWhiteSpace(placeholderCharacterId))
+                return profile;
+
+            return Merge(FromCharacterId(placeholderCharacterId), profile);
+        }
+
+        public static CharacterAssetProfile Merge(CharacterAssetProfile? fallback, CharacterAssetProfile? profile)
+        {
+            fallback ??= CharacterAssetProfile.Empty;
+            profile ??= CharacterAssetProfile.Empty;
+
+            return new(
+                MergeScenes(fallback.Scenes, profile.Scenes),
+                MergeUi(fallback.Ui, profile.Ui),
+                MergeVfx(fallback.Vfx, profile.Vfx),
+                MergeSpine(fallback.Spine, profile.Spine),
+                MergeAudio(fallback.Audio, profile.Audio),
+                MergeMultiplayer(fallback.Multiplayer, profile.Multiplayer));
+        }
+
         public static CharacterAssetProfile Ironclad()
         {
             return FromCharacterId("ironclad");
@@ -63,8 +89,125 @@ namespace STS2RitsuLib.Scaffolding.Characters
             return FromCharacterId("necrobinder");
         }
 
+        private static CharacterSceneAssetSet? MergeScenes(CharacterSceneAssetSet? fallback, CharacterSceneAssetSet? profile)
+        {
+            if (fallback == null)
+                return profile;
+
+            if (profile == null)
+                return fallback;
+
+            return fallback with
+            {
+                VisualsPath = profile.VisualsPath ?? fallback.VisualsPath,
+                EnergyCounterPath = profile.EnergyCounterPath ?? fallback.EnergyCounterPath,
+                MerchantAnimPath = profile.MerchantAnimPath ?? fallback.MerchantAnimPath,
+                RestSiteAnimPath = profile.RestSiteAnimPath ?? fallback.RestSiteAnimPath,
+            };
+        }
+
+        private static CharacterUiAssetSet? MergeUi(CharacterUiAssetSet? fallback, CharacterUiAssetSet? profile)
+        {
+            if (fallback == null)
+                return profile;
+
+            if (profile == null)
+                return fallback;
+
+            return fallback with
+            {
+                IconTexturePath = profile.IconTexturePath ?? fallback.IconTexturePath,
+                IconOutlineTexturePath = profile.IconOutlineTexturePath ?? fallback.IconOutlineTexturePath,
+                IconPath = profile.IconPath ?? fallback.IconPath,
+                CharacterSelectBgPath = profile.CharacterSelectBgPath ?? fallback.CharacterSelectBgPath,
+                CharacterSelectIconPath = profile.CharacterSelectIconPath ?? fallback.CharacterSelectIconPath,
+                CharacterSelectLockedIconPath = profile.CharacterSelectLockedIconPath ?? fallback.CharacterSelectLockedIconPath,
+                CharacterSelectTransitionPath = profile.CharacterSelectTransitionPath ?? fallback.CharacterSelectTransitionPath,
+                MapMarkerPath = profile.MapMarkerPath ?? fallback.MapMarkerPath,
+            };
+        }
+
+        private static CharacterVfxAssetSet? MergeVfx(CharacterVfxAssetSet? fallback, CharacterVfxAssetSet? profile)
+        {
+            if (fallback == null)
+                return profile;
+
+            if (profile == null)
+                return fallback;
+
+            return fallback with
+            {
+                TrailPath = profile.TrailPath ?? fallback.TrailPath,
+                TrailStyle = profile.TrailStyle ?? fallback.TrailStyle,
+            };
+        }
+
+        private static CharacterSpineAssetSet? MergeSpine(CharacterSpineAssetSet? fallback, CharacterSpineAssetSet? profile)
+        {
+            if (fallback == null)
+                return profile;
+
+            if (profile == null)
+                return fallback;
+
+            return fallback with
+            {
+                CombatSkeletonDataPath = profile.CombatSkeletonDataPath ?? fallback.CombatSkeletonDataPath,
+            };
+        }
+
+        private static CharacterAudioAssetSet? MergeAudio(CharacterAudioAssetSet? fallback, CharacterAudioAssetSet? profile)
+        {
+            if (fallback == null)
+                return profile;
+
+            if (profile == null)
+                return fallback;
+
+            return fallback with
+            {
+                CharacterSelectSfx = profile.CharacterSelectSfx ?? fallback.CharacterSelectSfx,
+                CharacterTransitionSfx = profile.CharacterTransitionSfx ?? fallback.CharacterTransitionSfx,
+                AttackSfx = profile.AttackSfx ?? fallback.AttackSfx,
+                CastSfx = profile.CastSfx ?? fallback.CastSfx,
+                DeathSfx = profile.DeathSfx ?? fallback.DeathSfx,
+            };
+        }
+
+        private static CharacterMultiplayerAssetSet? MergeMultiplayer(
+            CharacterMultiplayerAssetSet? fallback,
+            CharacterMultiplayerAssetSet? profile)
+        {
+            if (fallback == null)
+                return profile;
+
+            if (profile == null)
+                return fallback;
+
+            return fallback with
+            {
+                ArmPointingTexturePath = profile.ArmPointingTexturePath ?? fallback.ArmPointingTexturePath,
+                ArmRockTexturePath = profile.ArmRockTexturePath ?? fallback.ArmRockTexturePath,
+                ArmPaperTexturePath = profile.ArmPaperTexturePath ?? fallback.ArmPaperTexturePath,
+                ArmScissorsTexturePath = profile.ArmScissorsTexturePath ?? fallback.ArmScissorsTexturePath,
+            };
+        }
+
         extension(CharacterAssetProfile profile)
         {
+            public CharacterAssetProfile FillMissingFrom(CharacterAssetProfile fallback)
+            {
+                ArgumentNullException.ThrowIfNull(profile);
+                ArgumentNullException.ThrowIfNull(fallback);
+                return Merge(fallback, profile);
+            }
+
+            public CharacterAssetProfile WithPlaceholder(string characterId)
+            {
+                ArgumentNullException.ThrowIfNull(profile);
+                return profile.FillMissingFrom(FromCharacterId(characterId));
+            }
+
             public CharacterAssetProfile WithScenes(CharacterSceneAssetSet scenes)
             {
                 ArgumentNullException.ThrowIfNull(profile);
@@ -84,6 +227,13 @@ namespace STS2RitsuLib.Scaffolding.Characters
                 ArgumentNullException.ThrowIfNull(profile);
                 ArgumentNullException.ThrowIfNull(vfx);
                 return profile with { Vfx = vfx };
+            }
+
+            public CharacterAssetProfile WithSpine(CharacterSpineAssetSet spine)
+            {
+                ArgumentNullException.ThrowIfNull(profile);
+                ArgumentNullException.ThrowIfNull(spine);
+                return profile with { Spine = spine };
             }
 
             public CharacterAssetProfile WithAudio(CharacterAudioAssetSet audio)

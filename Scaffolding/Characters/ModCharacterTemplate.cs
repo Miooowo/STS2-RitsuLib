@@ -78,31 +78,35 @@ namespace STS2RitsuLib.Scaffolding.Characters
         protected virtual IEnumerable<Type> StartingPotionTypes => [];
         protected virtual Type? UnlocksAfterRunAsType => null;
         public virtual CharacterAssetProfile AssetProfile => CharacterAssetProfile.Empty;
+        public virtual string? PlaceholderCharacterId => CharacterAssetProfiles.DefaultPlaceholderCharacterId;
 
-        public virtual string? CustomVisualsPath => AssetProfile.Scenes?.VisualsPath;
-        public virtual string? CustomEnergyCounterPath => AssetProfile.Scenes?.EnergyCounterPath;
-        public virtual string? CustomMerchantAnimPath => AssetProfile.Scenes?.MerchantAnimPath;
-        public virtual string? CustomRestSiteAnimPath => AssetProfile.Scenes?.RestSiteAnimPath;
-        public virtual string? CustomIconTexturePath => AssetProfile.Ui?.IconTexturePath;
-        public virtual string? CustomIconOutlineTexturePath => AssetProfile.Ui?.IconOutlineTexturePath;
-        public virtual string? CustomIconPath => AssetProfile.Ui?.IconPath;
-        public virtual string? CustomCharacterSelectBgPath => AssetProfile.Ui?.CharacterSelectBgPath;
-        public virtual string? CustomCharacterSelectIconPath => AssetProfile.Ui?.CharacterSelectIconPath;
-        public virtual string? CustomCharacterSelectLockedIconPath => AssetProfile.Ui?.CharacterSelectLockedIconPath;
-        public virtual string? CustomCharacterSelectTransitionPath => AssetProfile.Ui?.CharacterSelectTransitionPath;
-        public virtual string? CustomMapMarkerPath => AssetProfile.Ui?.MapMarkerPath;
-        public virtual string? CustomTrailPath => AssetProfile.Vfx?.TrailPath;
-        public virtual CharacterTrailStyle? CustomTrailStyle => AssetProfile.Vfx?.TrailStyle;
-        public virtual string? CustomCombatSpineSkeletonDataPath => AssetProfile.Spine?.CombatSkeletonDataPath;
-        public virtual string? CustomCharacterSelectSfx => AssetProfile.Audio?.CharacterSelectSfx;
-        public virtual string? CustomCharacterTransitionSfx => AssetProfile.Audio?.CharacterTransitionSfx;
-        public virtual string? CustomAttackSfx => AssetProfile.Audio?.AttackSfx;
-        public virtual string? CustomCastSfx => AssetProfile.Audio?.CastSfx;
-        public virtual string? CustomDeathSfx => AssetProfile.Audio?.DeathSfx;
-        public virtual string? CustomArmPointingTexturePath => AssetProfile.Multiplayer?.ArmPointingTexturePath;
-        public virtual string? CustomArmRockTexturePath => AssetProfile.Multiplayer?.ArmRockTexturePath;
-        public virtual string? CustomArmPaperTexturePath => AssetProfile.Multiplayer?.ArmPaperTexturePath;
-        public virtual string? CustomArmScissorsTexturePath => AssetProfile.Multiplayer?.ArmScissorsTexturePath;
+        protected CharacterAssetProfile ResolvedAssetProfile =>
+            CharacterAssetProfiles.Resolve(AssetProfile, PlaceholderCharacterId);
+
+        public virtual string? CustomVisualsPath => ResolvedAssetProfile.Scenes?.VisualsPath;
+        public virtual string? CustomEnergyCounterPath => ResolvedAssetProfile.Scenes?.EnergyCounterPath;
+        public virtual string? CustomMerchantAnimPath => ResolvedAssetProfile.Scenes?.MerchantAnimPath;
+        public virtual string? CustomRestSiteAnimPath => ResolvedAssetProfile.Scenes?.RestSiteAnimPath;
+        public virtual string? CustomIconTexturePath => ResolvedAssetProfile.Ui?.IconTexturePath;
+        public virtual string? CustomIconOutlineTexturePath => ResolvedAssetProfile.Ui?.IconOutlineTexturePath;
+        public virtual string? CustomIconPath => ResolvedAssetProfile.Ui?.IconPath;
+        public virtual string? CustomCharacterSelectBgPath => ResolvedAssetProfile.Ui?.CharacterSelectBgPath;
+        public virtual string? CustomCharacterSelectIconPath => ResolvedAssetProfile.Ui?.CharacterSelectIconPath;
+        public virtual string? CustomCharacterSelectLockedIconPath => ResolvedAssetProfile.Ui?.CharacterSelectLockedIconPath;
+        public virtual string? CustomCharacterSelectTransitionPath => ResolvedAssetProfile.Ui?.CharacterSelectTransitionPath;
+        public virtual string? CustomMapMarkerPath => ResolvedAssetProfile.Ui?.MapMarkerPath;
+        public virtual string? CustomTrailPath => ResolvedAssetProfile.Vfx?.TrailPath;
+        public virtual CharacterTrailStyle? CustomTrailStyle => ResolvedAssetProfile.Vfx?.TrailStyle;
+        public virtual string? CustomCombatSpineSkeletonDataPath => ResolvedAssetProfile.Spine?.CombatSkeletonDataPath;
+        public virtual string? CustomCharacterSelectSfx => ResolvedAssetProfile.Audio?.CharacterSelectSfx;
+        public virtual string? CustomCharacterTransitionSfx => ResolvedAssetProfile.Audio?.CharacterTransitionSfx;
+        public virtual string? CustomAttackSfx => ResolvedAssetProfile.Audio?.AttackSfx;
+        public virtual string? CustomCastSfx => ResolvedAssetProfile.Audio?.CastSfx;
+        public virtual string? CustomDeathSfx => ResolvedAssetProfile.Audio?.DeathSfx;
+        public virtual string? CustomArmPointingTexturePath => ResolvedAssetProfile.Multiplayer?.ArmPointingTexturePath;
+        public virtual string? CustomArmRockTexturePath => ResolvedAssetProfile.Multiplayer?.ArmRockTexturePath;
+        public virtual string? CustomArmPaperTexturePath => ResolvedAssetProfile.Multiplayer?.ArmPaperTexturePath;
+        public virtual string? CustomArmScissorsTexturePath => ResolvedAssetProfile.Multiplayer?.ArmScissorsTexturePath;
 
         protected static IEnumerable<TModel> ResolveModels<TModel>(IEnumerable<Type> types)
             where TModel : AbstractModel

@@ -513,7 +513,7 @@ namespace STS2RitsuLib.Settings
             return line;
         }
 
-        private static void AttachContextMenuTargets(Control line, Control valueControl, ModSettingsActionsButton button)
+        internal static void AttachContextMenuTargets(Control line, Control valueControl, ModSettingsActionsButton button)
         {
             AttachContextMenu(line, button);
             AttachContextMenuRecursively(valueControl, button);
@@ -532,6 +532,9 @@ namespace STS2RitsuLib.Settings
 
         internal static void AttachContextMenu(Control target, ModSettingsActionsButton button)
         {
+            if (target.MouseFilter == Control.MouseFilterEnum.Ignore)
+                target.MouseFilter = Control.MouseFilterEnum.Pass;
+
             var longPressTimer = new Timer
             {
                 OneShot = true,
@@ -578,7 +581,7 @@ namespace STS2RitsuLib.Settings
             };
         }
 
-        private static Control? CreateEntryActionsButton<TValue>(ModSettingsUiContext context,
+        internal static Control? CreateEntryActionsButton<TValue>(ModSettingsUiContext context,
             IModSettingsValueBinding<TValue> binding)
         {
             var actions = BuildBindingActions(context, binding);
@@ -1477,22 +1480,9 @@ namespace STS2RitsuLib.Settings
     internal sealed partial class ModSettingsColorControl : HBoxContainer
     {
         private readonly Action<string>? _onChanged;
-        private ModSettingsSliderControl? _alphaSlider;
-        private ModSettingsSliderControl? _blueSlider;
-        private ModSettingsSliderControl? _greenSlider;
         private LineEdit? _hexEdit;
-        private Control? _hsvEditor;
-        private ModSettingsSliderControl? _hueSlider;
-        private OptionButton? _modeDropdown;
-        private PopupPanel? _popup;
-        private ColorRect? _popupPreview;
-        private ColorRect? _preview;
-        private Button? _previewButton;
-        private ModSettingsSliderControl? _redSlider;
-        private Control? _rgbEditor;
-        private ModSettingsSliderControl? _satSlider;
+        private ColorPickerButton? _pickerButton;
         private bool _suppressCallbacks;
-        private ModSettingsSliderControl? _valueSlider;
 
         public ModSettingsColorControl(string initialValue, Action<string> onChanged)
         {
@@ -1501,60 +1491,22 @@ namespace STS2RitsuLib.Settings
             CustomMinimumSize = new(320f, 56f);
             SizeFlagsHorizontal = SizeFlags.ShrinkEnd;
             MouseFilter = MouseFilterEnum.Ignore;
+            Alignment = AlignmentMode.Center;
             AddThemeConstantOverride("separation", 10);
 
-            var previewButton = new Button
+            var pickerButton = new ColorPickerButton
             {
-                CustomMinimumSize = new(64f, 56f),
+                CustomMinimumSize = new(72f, 56f),
                 MouseFilter = MouseFilterEnum.Stop,
                 FocusMode = FocusModeEnum.All,
+                EditAlpha = true,
             };
-            previewButton.AddThemeStyleboxOverride("normal", ModSettingsUiFactory.CreateSurfaceStyle());
-            previewButton.AddThemeStyleboxOverride("hover", ModSettingsUiFactory.CreateSurfaceStyle());
-            previewButton.AddThemeStyleboxOverride("pressed", ModSettingsUiFactory.CreateSurfaceStyle());
-            previewButton.AddThemeStyleboxOverride("focus", ModSettingsUiFactory.CreateSurfaceStyle());
-            AddChild(previewButton);
-            _previewButton = previewButton;
-
-            var previewHost = new MarginContainer
-            {
-                MouseFilter = MouseFilterEnum.Ignore,
-            };
-            previewHost.SetAnchorsPreset(LayoutPreset.FullRect);
-            previewHost.AddThemeConstantOverride("margin_left", 8);
-            previewHost.AddThemeConstantOverride("margin_top", 8);
-            previewHost.AddThemeConstantOverride("margin_right", 8);
-            previewHost.AddThemeConstantOverride("margin_bottom", 8);
-            previewButton.AddChild(previewHost);
-
-            var previewLayer = new Control
-            {
-                MouseFilter = MouseFilterEnum.Ignore,
-                SizeFlagsHorizontal = SizeFlags.ExpandFill,
-                SizeFlagsVertical = SizeFlags.ExpandFill,
-            };
-            previewLayer.SetAnchorsPreset(LayoutPreset.FullRect);
-            previewHost.AddChild(previewLayer);
-
-            var checker = new ColorRect
-            {
-                Color = new(0.18f, 0.22f, 0.27f),
-                MouseFilter = MouseFilterEnum.Ignore,
-            };
-            checker.SetAnchorsPreset(LayoutPreset.FullRect);
-            previewLayer.AddChild(checker);
-
-            var preview = new ColorRect
-            {
-                MouseFilter = MouseFilterEnum.Ignore,
-            };
-            preview.SetAnchorsAndOffsetsPreset(LayoutPreset.FullRect);
-            preview.OffsetLeft = 2f;
-            preview.OffsetTop = 2f;
-            preview.OffsetRight = -2f;
-            preview.OffsetBottom = -2f;
-            previewLayer.AddChild(preview);
-            _preview = preview;
+            pickerButton.AddThemeStyleboxOverride("normal", ModSettingsUiFactory.CreateSurfaceStyle());
+            pickerButton.AddThemeStyleboxOverride("hover", ModSettingsUiFactory.CreateSurfaceStyle());
+            pickerButton.AddThemeStyleboxOverride("pressed", ModSettingsUiFactory.CreateSurfaceStyle());
+            pickerButton.AddThemeStyleboxOverride("focus", ModSettingsUiFactory.CreateSurfaceStyle());
+            AddChild(pickerButton);
+            _pickerButton = pickerButton;
 
             var hexEdit = new LineEdit
             {
@@ -1572,7 +1524,13 @@ namespace STS2RitsuLib.Settings
             AddChild(hexEdit);
             _hexEdit = hexEdit;
 
-            CreatePopup();
+            if (pickerButton.GetPicker() is { } picker)
+            {
+                picker.EditAlpha = true;
+                picker.PresetsVisible = true;
+                picker.SamplerVisible = true;
+                picker.DeferredMode = false;
+            }
 
             ApplyFromHex(initialValue, false);
         }
@@ -1583,230 +1541,23 @@ namespace STS2RitsuLib.Settings
 
         public override void _Ready()
         {
-            if (_hexEdit == null)
-                return;
-
-            _hexEdit.TextSubmitted += text =>
+            if (_hexEdit != null)
             {
-                ApplyFromHex(text, true);
-                _hexEdit.ReleaseFocus();
-            };
-            _hexEdit.FocusExited += () => ApplyFromHex(_hexEdit.Text, true);
-            if (_previewButton != null)
-                _previewButton.Pressed += TogglePopup;
-            if (_modeDropdown != null)
-                _modeDropdown.ItemSelected += index => SetEditorMode(index == 0 ? "RGB" : "HSV");
+                _hexEdit.TextSubmitted += text =>
+                {
+                    ApplyFromHex(text, true);
+                    _hexEdit.ReleaseFocus();
+                };
+                _hexEdit.FocusExited += () => ApplyFromHex(_hexEdit.Text, true);
+            }
+
+            if (_pickerButton != null)
+                _pickerButton.ColorChanged += color => ApplyColor(color, true);
         }
 
         public void SetValue(string value)
         {
             ApplyFromHex(value, false);
-        }
-
-        private void CreatePopup()
-        {
-            var popup = new PopupPanel
-            {
-                Visible = false,
-                Size = new(420, 460),
-            };
-            popup.AddThemeStyleboxOverride("panel", ModSettingsUiFactory.CreateListEditorSurfaceStyle());
-            AddChild(popup);
-            _popup = popup;
-
-            var frame = new MarginContainer { MouseFilter = MouseFilterEnum.Ignore };
-            frame.AddThemeConstantOverride("margin_left", 16);
-            frame.AddThemeConstantOverride("margin_top", 16);
-            frame.AddThemeConstantOverride("margin_right", 16);
-            frame.AddThemeConstantOverride("margin_bottom", 16);
-            popup.AddChild(frame);
-
-            var root = new VBoxContainer { MouseFilter = MouseFilterEnum.Ignore };
-            root.AddThemeConstantOverride("separation", 12);
-            frame.AddChild(root);
-
-            var title = new Label
-            {
-                Text = ModSettingsLocalization.Get("color.title", "Color Editor"),
-                MouseFilter = MouseFilterEnum.Ignore,
-            };
-            title.AddThemeFontOverride("font", ModSettingsUiResources.KreonBold);
-            title.AddThemeFontSizeOverride("font_size", 22);
-            title.AddThemeColorOverride("font_color", new(0.96f, 0.98f, 1f));
-            root.AddChild(title);
-
-            var mode = new OptionButton
-            {
-                CustomMinimumSize = new(0f, 48f),
-                FocusMode = FocusModeEnum.All,
-                MouseFilter = MouseFilterEnum.Stop,
-            };
-            mode.AddItem(ModSettingsLocalization.Get("color.mode.rgb", "RGB"), 0);
-            mode.AddItem(ModSettingsLocalization.Get("color.mode.hsv", "HSV"), 1);
-            mode.AddThemeFontOverride("font", ModSettingsUiResources.KreonBold);
-            mode.AddThemeFontSizeOverride("font_size", 16);
-            mode.AddThemeStyleboxOverride("normal", ModSettingsUiFactory.CreateSurfaceStyle());
-            mode.AddThemeStyleboxOverride("hover", ModSettingsUiFactory.CreateSurfaceStyle());
-            mode.AddThemeStyleboxOverride("pressed", ModSettingsUiFactory.CreateSurfaceStyle());
-            mode.AddThemeStyleboxOverride("focus", ModSettingsUiFactory.CreateSurfaceStyle());
-            root.AddChild(mode);
-            _modeDropdown = mode;
-
-            var popupPreviewShell = new PanelContainer
-            {
-                CustomMinimumSize = new(0f, 92f),
-                MouseFilter = MouseFilterEnum.Ignore,
-            };
-            popupPreviewShell.AddThemeStyleboxOverride("panel", ModSettingsUiFactory.CreateSurfaceStyle());
-            root.AddChild(popupPreviewShell);
-
-            var popupPreviewFrame = new MarginContainer { MouseFilter = MouseFilterEnum.Ignore };
-            popupPreviewFrame.SetAnchorsPreset(LayoutPreset.FullRect);
-            popupPreviewFrame.AddThemeConstantOverride("margin_left", 10);
-            popupPreviewFrame.AddThemeConstantOverride("margin_top", 10);
-            popupPreviewFrame.AddThemeConstantOverride("margin_right", 10);
-            popupPreviewFrame.AddThemeConstantOverride("margin_bottom", 10);
-            popupPreviewShell.AddChild(popupPreviewFrame);
-
-            var popupChecker = new ColorRect
-            {
-                Color = new(0.18f, 0.22f, 0.27f),
-                MouseFilter = MouseFilterEnum.Ignore,
-            };
-            popupChecker.SetAnchorsAndOffsetsPreset(LayoutPreset.FullRect);
-            popupPreviewFrame.AddChild(popupChecker);
-
-            var popupPreview = new ColorRect { MouseFilter = MouseFilterEnum.Ignore };
-            popupPreview.SetAnchorsAndOffsetsPreset(LayoutPreset.FullRect);
-            popupPreview.OffsetLeft = 2f;
-            popupPreview.OffsetTop = 2f;
-            popupPreview.OffsetRight = -2f;
-            popupPreview.OffsetBottom = -2f;
-            popupPreviewFrame.AddChild(popupPreview);
-            _popupPreview = popupPreview;
-
-            _rgbEditor = CreateRgbEditor();
-            _hsvEditor = CreateHsvEditor();
-            root.AddChild(_rgbEditor);
-            root.AddChild(_hsvEditor);
-            SetEditorMode("RGB");
-        }
-
-        private Control CreateRgbEditor()
-        {
-            var box = new VBoxContainer { MouseFilter = MouseFilterEnum.Ignore };
-            box.AddThemeConstantOverride("separation", 8);
-            _redSlider = CreateChannelSlider("R", 255f, value => ApplyRgbChange(value, null, null, null));
-            _greenSlider = CreateChannelSlider("G", 255f, value => ApplyRgbChange(null, value, null, null));
-            _blueSlider = CreateChannelSlider("B", 255f, value => ApplyRgbChange(null, null, value, null));
-            _alphaSlider = CreateChannelSlider("A", 255f, value => ApplyRgbChange(null, null, null, value));
-            box.AddChild(WrapSlider(ModSettingsLocalization.Get("color.channel.red", "Red"), _redSlider));
-            box.AddChild(WrapSlider(ModSettingsLocalization.Get("color.channel.green", "Green"), _greenSlider));
-            box.AddChild(WrapSlider(ModSettingsLocalization.Get("color.channel.blue", "Blue"), _blueSlider));
-            box.AddChild(WrapSlider(ModSettingsLocalization.Get("color.channel.alpha", "Alpha"), _alphaSlider));
-            return box;
-        }
-
-        private Control CreateHsvEditor()
-        {
-            var box = new VBoxContainer { MouseFilter = MouseFilterEnum.Ignore };
-            box.AddThemeConstantOverride("separation", 8);
-            _hueSlider = CreateChannelSlider("H", 360f, value => ApplyHsvChange(value, null, null));
-            _satSlider = CreateChannelSlider("S", 100f, value => ApplyHsvChange(null, value, null));
-            _valueSlider = CreateChannelSlider("V", 100f, value => ApplyHsvChange(null, null, value));
-            box.AddChild(WrapSlider(ModSettingsLocalization.Get("color.channel.hue", "Hue"), _hueSlider));
-            box.AddChild(WrapSlider(ModSettingsLocalization.Get("color.channel.saturation", "Saturation"), _satSlider));
-            box.AddChild(WrapSlider(ModSettingsLocalization.Get("color.channel.value", "Value"), _valueSlider));
-            return box;
-        }
-
-        private ModSettingsSliderControl CreateChannelSlider(string prefix, float maxValue, Action<float> onChanged)
-        {
-            return new(maxValue, 0f, maxValue, 1f,
-                value => $"{prefix}:{Mathf.RoundToInt(value)}", onChanged);
-        }
-
-        private static Control WrapSlider(string labelText, Control slider)
-        {
-            var row = new VBoxContainer { MouseFilter = MouseFilterEnum.Ignore };
-            row.AddThemeConstantOverride("separation", 4);
-
-            var label = new Label { Text = labelText, MouseFilter = MouseFilterEnum.Ignore };
-            label.AddThemeFontOverride("font", ModSettingsUiResources.KreonRegular);
-            label.AddThemeFontSizeOverride("font_size", 15);
-            label.AddThemeColorOverride("font_color", new(0.86f, 0.93f, 0.98f, 0.94f));
-            row.AddChild(label);
-            row.AddChild(slider);
-            return row;
-        }
-
-        private void TogglePopup()
-        {
-            if (_popup == null)
-                return;
-            if (_popup.Visible)
-            {
-                _popup.Hide();
-                return;
-            }
-
-            _popup.Popup();
-            PositionPopupInViewport();
-        }
-
-        private void PositionPopupInViewport()
-        {
-            if (_popup == null)
-                return;
-
-            var viewportRect = GetViewportRect();
-            var popupSize = _popup.Size;
-            var preferredX = Mathf.RoundToInt(GlobalPosition.X);
-            var preferredY = Mathf.RoundToInt(GlobalPosition.Y + Size.Y + 6f);
-
-            var minX = Mathf.RoundToInt(viewportRect.Position.X);
-            var maxX = Mathf.RoundToInt(viewportRect.End.X - popupSize.X);
-            var minY = Mathf.RoundToInt(viewportRect.Position.Y);
-            var maxY = Mathf.RoundToInt(viewportRect.End.Y - popupSize.Y);
-            var x = Mathf.Clamp(preferredX, minX, maxX);
-            var y = preferredY;
-
-            if (y + popupSize.Y > viewportRect.End.Y)
-                y = Mathf.RoundToInt(GlobalPosition.Y - popupSize.Y - 6f);
-
-            y = Mathf.Clamp(y, minY, maxY);
-            _popup.Position = new(x, y);
-        }
-
-        private void SetEditorMode(string mode)
-        {
-            _rgbEditor?.Visible = mode == "RGB";
-            _hsvEditor?.Visible = mode == "HSV";
-        }
-
-        private void ApplyRgbChange(float? red, float? green, float? blue, float? alpha)
-        {
-            if (_suppressCallbacks)
-                return;
-
-            var current = ReadCurrentColor();
-            ApplyColor(new(
-                (red ?? current.R * 255f) / 255f,
-                (green ?? current.G * 255f) / 255f,
-                (blue ?? current.B * 255f) / 255f,
-                (alpha ?? current.A * 255f) / 255f), true);
-        }
-
-        private void ApplyHsvChange(float? hue, float? saturation, float? value)
-        {
-            if (_suppressCallbacks)
-                return;
-
-            var current = ReadCurrentColor();
-            var h = hue ?? current.H * 360f;
-            var s = saturation ?? current.S * 100f;
-            var v = value ?? current.V * 100f;
-            ApplyColor(Color.FromHsv(h / 360f, s / 100f, v / 100f, current.A), true);
         }
 
         private void ApplyFromHex(string text, bool notify)
@@ -1822,17 +1573,14 @@ namespace STS2RitsuLib.Settings
 
         private void ApplyColor(Color color, bool notify)
         {
+            if (_suppressCallbacks)
+                return;
+
             _suppressCallbacks = true;
-            _preview?.Color = color;
-            _popupPreview?.Color = color;
-            _hexEdit?.Text = FormatColor(color);
-            _redSlider?.SetValue(Mathf.RoundToInt(color.R * 255f));
-            _greenSlider?.SetValue(Mathf.RoundToInt(color.G * 255f));
-            _blueSlider?.SetValue(Mathf.RoundToInt(color.B * 255f));
-            _alphaSlider?.SetValue(Mathf.RoundToInt(color.A * 255f));
-            _hueSlider?.SetValue(Mathf.RoundToInt(color.H * 360f));
-            _satSlider?.SetValue(Mathf.RoundToInt(color.S * 100f));
-            _valueSlider?.SetValue(Mathf.RoundToInt(color.V * 100f));
+            if (_pickerButton != null)
+                _pickerButton.Color = color;
+            if (_hexEdit != null)
+                _hexEdit.Text = FormatColor(color);
             _suppressCallbacks = false;
 
             if (notify)
@@ -1841,7 +1589,7 @@ namespace STS2RitsuLib.Settings
 
         private Color ReadCurrentColor()
         {
-            return _preview?.Color ?? new(1f, 215f / 255f, 64f / 255f);
+            return _pickerButton?.Color ?? new(1f, 215f / 255f, 64f / 255f);
         }
 
         private static bool TryParseColor(string text, out Color color)
@@ -2507,6 +2255,12 @@ namespace STS2RitsuLib.Settings
             };
             header.AddChild(addButton);
 
+            if (ModSettingsUiFactory.CreateEntryActionsButton(_context, _entry.Binding) is ModSettingsActionsButton actionsButton)
+            {
+                header.AddChild(actionsButton);
+                ModSettingsUiFactory.AttachContextMenuTargets(this, shell, actionsButton);
+            }
+
             var body = new PanelContainer
             {
                 SizeFlagsHorizontal = SizeFlags.ExpandFill,
@@ -2925,7 +2679,7 @@ namespace STS2RitsuLib.Settings
                 new(ModSettingsLocalization.Get("button.remove", "Remove"), true, itemContext.Remove),
             ], itemContext.RequestRefresh);
             actions.AddChild(actionsButton);
-            ModSettingsUiFactory.AttachContextMenu(this, actionsButton);
+            ModSettingsUiFactory.AttachContextMenuTargets(this, outer, actionsButton);
 
             if (editorContent != null)
             {

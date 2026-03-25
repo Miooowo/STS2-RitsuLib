@@ -513,17 +513,16 @@ namespace STS2RitsuLib.Settings
             return line;
         }
 
+        private const string ContextMenuAttachedMetaKey = "_ritsulib_context_menu_attached";
+
         internal static void AttachContextMenuTargets(Control line, Control valueControl, ModSettingsActionsButton button)
         {
-            AttachContextMenu(line, button);
+            AttachContextMenuRecursively(line, button);
             AttachContextMenuRecursively(valueControl, button);
         }
 
         private static void AttachContextMenuRecursively(Control target, ModSettingsActionsButton button)
         {
-            if (target is ModSettingsActionsButton)
-                return;
-
             AttachContextMenu(target, button);
             foreach (var child in target.GetChildren())
                 if (child is Control childControl)
@@ -532,6 +531,11 @@ namespace STS2RitsuLib.Settings
 
         internal static void AttachContextMenu(Control target, ModSettingsActionsButton button)
         {
+            if (target.HasMeta(ContextMenuAttachedMetaKey))
+                return;
+
+            target.SetMeta(ContextMenuAttachedMetaKey, true);
+
             if (target.MouseFilter == Control.MouseFilterEnum.Ignore)
                 target.MouseFilter = Control.MouseFilterEnum.Pass;
 
@@ -613,7 +617,7 @@ namespace STS2RitsuLib.Settings
                 }));
             actions.Add(new(
                 ModSettingsLocalization.Get("button.paste", "Paste data"),
-                CanPasteBindingValueFromClipboard(binding),
+                () => CanPasteBindingValueFromClipboard(binding),
                 () =>
                 {
                     if (!TryPasteBindingValueFromClipboard(binding)) return;
@@ -1818,7 +1822,13 @@ namespace STS2RitsuLib.Settings
         }
     }
 
-    internal sealed record ModSettingsMenuAction(string Label, bool Enabled, Action Action);
+    internal sealed record ModSettingsMenuAction(string Label, Func<bool> IsEnabled, Action Action)
+    {
+        public ModSettingsMenuAction(string label, bool enabled, Action action)
+            : this(label, () => enabled, action)
+        {
+        }
+    }
 
     public enum ModSettingsClipboardScope
     {
@@ -1867,15 +1877,13 @@ namespace STS2RitsuLib.Settings
         {
             var popup = GetPopup();
             _popup = popup;
-            popup.Clear();
-            ApplyTouchFriendlyPopupTheme(popup);
-            for (var i = 0; i < _actions.Count; i++)
-            {
-                popup.AddItem(_actions[i].Label, i);
-                popup.SetItemDisabled(i, !_actions[i].Enabled);
-            }
+            RefreshPopupItems();
 
-            popup.AboutToPopup += ClampPopupToViewport;
+            popup.AboutToPopup += () =>
+            {
+                RefreshPopupItems();
+                ClampPopupToViewport();
+            };
 
             popup.IdPressed += id =>
             {
@@ -1883,7 +1891,7 @@ namespace STS2RitsuLib.Settings
                     return;
 
                 var action = _actions[(int)id];
-                if (!action.Enabled)
+                if (!action.IsEnabled())
                     return;
 
                 action.Action();
@@ -1897,8 +1905,25 @@ namespace STS2RitsuLib.Settings
                 Mathf.RoundToInt(globalPosition.X),
                 Mathf.RoundToInt(globalPosition.Y));
             _popup ??= GetPopup();
+            RefreshPopupItems();
             _popup.Popup();
             ClampPopupToViewport();
+        }
+
+        private void RefreshPopupItems()
+        {
+            _popup ??= GetPopup();
+            var popup = _popup;
+            if (popup == null)
+                return;
+
+            popup.Clear();
+            ApplyTouchFriendlyPopupTheme(popup);
+            for (var i = 0; i < _actions.Count; i++)
+            {
+                popup.AddItem(_actions[i].Label, i);
+                popup.SetItemDisabled(i, !_actions[i].IsEnabled());
+            }
         }
 
         private void ClampPopupToViewport()
@@ -2674,7 +2699,7 @@ namespace STS2RitsuLib.Settings
                 new(ModSettingsLocalization.Get("button.copySubtree", "Copy with children"),
                     itemContext.SupportsStructuredClipboard,
                     () => { itemContext.TryCopyToClipboard(ModSettingsClipboardScope.Subtree); }),
-                new(ModSettingsLocalization.Get("button.paste", "Paste data"), itemContext.CanPasteFromClipboard(),
+                new(ModSettingsLocalization.Get("button.paste", "Paste data"), () => itemContext.CanPasteFromClipboard(),
                     () => { itemContext.TryPasteFromClipboard(); }),
                 new(ModSettingsLocalization.Get("button.remove", "Remove"), true, itemContext.Remove),
             ], itemContext.RequestRefresh);

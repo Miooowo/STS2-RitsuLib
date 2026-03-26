@@ -32,6 +32,7 @@ namespace STS2RitsuLib.Settings
         private bool _localeSubscribed;
         private VBoxContainer _modButtonList = null!;
         private HBoxContainer _pageTabRow = null!;
+        private AcceptDialog? _pasteErrorDialog;
         private bool _refreshQueued;
         private double _saveTimer = -1;
         private ScrollContainer _scrollContainer = null!;
@@ -181,6 +182,42 @@ namespace STS2RitsuLib.Settings
         internal void RegisterRefreshAction(Action action)
         {
             _refreshActions.Add(action);
+        }
+
+        internal void ShowPasteFailure(ModSettingsPasteFailureReason reason)
+        {
+            if (reason == ModSettingsPasteFailureReason.None)
+                return;
+
+            var key = reason switch
+            {
+                ModSettingsPasteFailureReason.ClipboardEmpty => "clipboard.pasteFailedEmpty",
+                ModSettingsPasteFailureReason.PasteRuleDenied => "clipboard.pasteFailedBlocked",
+                _ => "clipboard.pasteFailedIncompatible",
+            };
+
+            var fallback = reason switch
+            {
+                ModSettingsPasteFailureReason.ClipboardEmpty => "Clipboard is empty or unavailable.",
+                ModSettingsPasteFailureReason.PasteRuleDenied => "Paste was blocked by a custom rule.",
+                _ => "Clipboard contents are not compatible with this setting.",
+            };
+
+            EnsurePasteErrorDialog();
+            _pasteErrorDialog!.Title =
+                ModSettingsLocalization.Get("clipboard.pasteFailedTitle", "Paste failed");
+            _pasteErrorDialog.OkButtonText = ModSettingsLocalization.Get("clipboard.pasteErrorOk", "OK");
+            _pasteErrorDialog.DialogText = ModSettingsLocalization.Get(key, fallback);
+            _pasteErrorDialog.PopupCentered();
+        }
+
+        private void EnsurePasteErrorDialog()
+        {
+            if (_pasteErrorDialog != null)
+                return;
+
+            _pasteErrorDialog = new() { Name = "PasteErrorDialog" };
+            AddChild(_pasteErrorDialog);
         }
 
         private void FlushRefreshActions()
@@ -421,7 +458,8 @@ namespace STS2RitsuLib.Settings
                     () =>
                     {
                         _selectedModId = modId;
-                        _selectedPageId = pages.FirstOrDefault(page => string.IsNullOrWhiteSpace(page.ParentPageId))?.Id;
+                        _selectedPageId = pages.FirstOrDefault(page => string.IsNullOrWhiteSpace(page.ParentPageId))
+                            ?.Id;
                         _selectedSectionId = null;
                         ExpandOnlyMod(modId);
                         _focusSelectedPageButtonOnNextRefresh = true;

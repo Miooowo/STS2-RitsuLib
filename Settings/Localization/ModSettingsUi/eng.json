@@ -114,5 +114,10 @@
   "ritsulib.showcase.details.field.label": "Label",
   "ritsulib.showcase.details.field.value": "Value",
   "button.copySelf": "Copy self",
-  "button.copySubtree": "Copy with children"
+  "button.copySubtree": "Copy with children",
+  "clipboard.pasteFailedTitle": "Paste failed",
+  "clipboard.pasteErrorOk": "OK",
+  "clipboard.pasteFailedEmpty": "Clipboard is empty or unavailable.",
+  "clipboard.pasteFailedBlocked": "Paste was blocked by a custom rule.",
+  "clipboard.pasteFailedIncompatible": "Clipboard contents are not compatible with this setting."
 }

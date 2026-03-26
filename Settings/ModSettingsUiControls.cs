@@ -13,8 +13,18 @@ using Timer = Godot.Timer;
 
 namespace STS2RitsuLib.Settings
 {
-    internal sealed class ModSettingsUiContext(RitsuModSettingsSubmenu submenu)
+    internal sealed class ModSettingsUiContext(RitsuModSettingsSubmenu submenu) : IModSettingsUiActionHost
     {
+        public void MarkDirty(IModSettingsBinding binding)
+        {
+            submenu.MarkDirty(binding);
+        }
+
+        public void RequestRefresh()
+        {
+            submenu.RequestRefresh();
+        }
+
         public static string Resolve(ModSettingsText? text, string fallback = "")
         {
             return text?.Resolve() ?? fallback;
@@ -25,7 +35,7 @@ namespace STS2RitsuLib.Settings
             return ModSettingsLocalization.ResolvePageDisplayName(page);
         }
 
-        public string? ResolvePageDescription(ModSettingsPage page)
+        public static string? ResolvePageDescription(ModSettingsPage page)
         {
             var resolved = page.Description?.Resolve();
             if (!string.IsNullOrWhiteSpace(resolved))
@@ -36,7 +46,7 @@ namespace STS2RitsuLib.Settings
                 ?.manifest?.description;
         }
 
-        public string ComposeBindingDescription(ModSettingsText? description, IModSettingsBinding binding)
+        public static string ComposeBindingDescription(ModSettingsText? description, IModSettingsBinding binding)
         {
             if (binding is ITransientModSettingsBinding)
             {
@@ -57,16 +67,6 @@ namespace STS2RitsuLib.Settings
                 : $"{resolvedDescription}  [color=#B9B09A]- {scopeText}[/color]";
         }
 
-        public void MarkDirty(IModSettingsBinding binding)
-        {
-            submenu.MarkDirty(binding);
-        }
-
-        public void RequestRefresh()
-        {
-            submenu.RequestRefresh();
-        }
-
         public void RegisterRefresh(Action action)
         {
             submenu.RegisterRefreshAction(action);
@@ -76,12 +76,35 @@ namespace STS2RitsuLib.Settings
         {
             submenu.NavigateToPage(pageId);
         }
+
+        public void NotifyPasteFailure(ModSettingsPasteFailureReason reason)
+        {
+            submenu.ShowPasteFailure(reason);
+        }
     }
 
     internal static class ModSettingsUiFactory
     {
         private const float EntryControlWidth = 248f;
         private const float PageContentWidth = 0f;
+
+        private const string ContextMenuAttachedMetaKey = "_ritsulib_context_menu_attached";
+
+        internal static void RegisterRefreshWhenAlive(ModSettingsUiContext context, GodotObject? node, Action action)
+        {
+            if (node == null)
+            {
+                context.RegisterRefresh(action);
+                return;
+            }
+
+            context.RegisterRefresh(() =>
+            {
+                if (!GodotObject.IsInstanceValid(node))
+                    return;
+                action();
+            });
+        }
 
         public static Control CreatePageContent(ModSettingsUiContext context, ModSettingsPage page)
         {
@@ -94,8 +117,32 @@ namespace STS2RitsuLib.Settings
 
             container.AddThemeConstantOverride("separation", 8);
 
+            var pageUiContext = new ModSettingsPageUiContext(page, context);
+            var pageActions = BuildPageMenuActions(context, pageUiContext);
+            if (pageActions.Count > 0)
+            {
+                var pageActionBar = new HBoxContainer
+                {
+                    SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
+                    MouseFilter = Control.MouseFilterEnum.Ignore,
+                    Alignment = BoxContainer.AlignmentMode.End,
+                };
+                pageActionBar.AddThemeConstantOverride("separation", 10);
+                var pageSpacer = new Control
+                {
+                    SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
+                    MouseFilter = Control.MouseFilterEnum.Ignore,
+                };
+                pageActionBar.AddChild(pageSpacer);
+                var pageActionsButton = new ModSettingsActionsButton(pageActions, context.RequestRefresh);
+                pageActionBar.AddChild(pageActionsButton);
+                AttachContextMenuTargets(pageActionBar, pageActionBar, pageActionsButton);
+                container.AddChild(pageActionBar);
+            }
+
             var pageDescription =
-                CreateRefreshableDescriptionLabel(context, () => context.ResolvePageDescription(page) ?? string.Empty);
+                CreateRefreshableDescriptionLabel(context,
+                    () => ModSettingsUiContext.ResolvePageDescription(page) ?? string.Empty);
             container.AddChild(pageDescription);
             pageDescription.Visible = !string.IsNullOrWhiteSpace(pageDescription.Text);
 
@@ -105,7 +152,7 @@ namespace STS2RitsuLib.Settings
                 if (index > 0)
                     container.AddChild(CreateDivider());
 
-                container.AddChild(CreateSection(context, section));
+                container.AddChild(CreateSection(context, page, section));
             }
 
             return container;
@@ -121,12 +168,12 @@ namespace STS2RitsuLib.Settings
                     context.MarkDirty(entry.Binding);
                     context.RequestRefresh();
                 });
-            context.RegisterRefresh(() => control.SetValue(entry.Binding.Read()));
+            RegisterRefreshWhenAlive(context, control, () => control.SetValue(entry.Binding.Read()));
 
             return CreateSettingLine(
                 context,
                 () => ModSettingsUiContext.Resolve(entry.Label),
-                () => context.ComposeBindingDescription(entry.Description, entry.Binding),
+                () => ModSettingsUiContext.ComposeBindingDescription(entry.Description, entry.Binding),
                 control,
                 entry.Binding);
         }
@@ -145,12 +192,12 @@ namespace STS2RitsuLib.Settings
                     context.MarkDirty(entry.Binding);
                     context.RequestRefresh();
                 });
-            context.RegisterRefresh(() => control.SetValue(entry.Binding.Read()));
+            RegisterRefreshWhenAlive(context, control, () => control.SetValue(entry.Binding.Read()));
 
             return CreateSettingLine(
                 context,
                 () => ModSettingsUiContext.Resolve(entry.Label),
-                () => context.ComposeBindingDescription(entry.Description, entry.Binding),
+                () => ModSettingsUiContext.ComposeBindingDescription(entry.Description, entry.Binding),
                 control,
                 entry.Binding);
 
@@ -199,12 +246,12 @@ namespace STS2RitsuLib.Settings
                 refreshRegistration = () => stepper.SetValue(entry.Binding.Read());
             }
 
-            context.RegisterRefresh(refreshRegistration);
+            RegisterRefreshWhenAlive(context, control, refreshRegistration);
 
             return CreateSettingLine(
                 context,
                 () => ModSettingsUiContext.Resolve(entry.Label),
-                () => context.ComposeBindingDescription(entry.Description, entry.Binding),
+                () => ModSettingsUiContext.ComposeBindingDescription(entry.Description, entry.Binding),
                 control,
                 entry.Binding);
         }
@@ -219,12 +266,12 @@ namespace STS2RitsuLib.Settings
                     context.MarkDirty(entry.Binding);
                     context.RequestRefresh();
                 });
-            context.RegisterRefresh(() => control.SetValue(entry.Binding.Read()));
+            RegisterRefreshWhenAlive(context, control, () => control.SetValue(entry.Binding.Read()));
 
             return CreateSettingLine(
                 context,
                 () => ModSettingsUiContext.Resolve(entry.Label),
-                () => context.ComposeBindingDescription(entry.Description, entry.Binding),
+                () => ModSettingsUiContext.ComposeBindingDescription(entry.Description, entry.Binding),
                 control,
                 entry.Binding);
         }
@@ -243,12 +290,12 @@ namespace STS2RitsuLib.Settings
                     context.MarkDirty(entry.Binding);
                     context.RequestRefresh();
                 });
-            context.RegisterRefresh(() => control.SetValue(entry.Binding.Read()));
+            RegisterRefreshWhenAlive(context, control, () => control.SetValue(entry.Binding.Read()));
 
             return CreateSettingLine(
                 context,
                 () => ModSettingsUiContext.Resolve(entry.Label),
-                () => context.ComposeBindingDescription(entry.Description, entry.Binding),
+                () => ModSettingsUiContext.ComposeBindingDescription(entry.Description, entry.Binding),
                 control,
                 entry.Binding);
         }
@@ -324,7 +371,7 @@ namespace STS2RitsuLib.Settings
                 SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
                 MouseFilter = Control.MouseFilterEnum.Ignore,
             };
-            context.RegisterRefresh(() => preview.Texture = entry.TextureProvider());
+            RegisterRefreshWhenAlive(context, preview, () => preview.Texture = entry.TextureProvider());
             surface.AddChild(preview);
             container.AddChild(surface);
             return container;
@@ -351,12 +398,12 @@ namespace STS2RitsuLib.Settings
                     context.MarkDirty(entry.Binding);
                     context.RequestRefresh();
                 });
-            context.RegisterRefresh(() => control.SetValue(entry.Binding.Read()));
+            RegisterRefreshWhenAlive(context, control, () => control.SetValue(entry.Binding.Read()));
 
             return CreateSettingLine(
                 context,
                 () => ModSettingsUiContext.Resolve(entry.Label),
-                () => context.ComposeBindingDescription(entry.Description, entry.Binding),
+                () => ModSettingsUiContext.ComposeBindingDescription(entry.Description, entry.Binding),
                 control,
                 entry.Binding);
 
@@ -512,9 +559,8 @@ namespace STS2RitsuLib.Settings
             return line;
         }
 
-        private const string ContextMenuAttachedMetaKey = "_ritsulib_context_menu_attached";
-
-        internal static void AttachContextMenuTargets(Control line, Control valueControl, ModSettingsActionsButton button)
+        internal static void AttachContextMenuTargets(Control line, Control valueControl,
+            ModSettingsActionsButton button)
         {
             AttachContextMenuRecursively(line, button);
             AttachContextMenuRecursively(valueControl, button);
@@ -597,6 +643,7 @@ namespace STS2RitsuLib.Settings
             var actions = new List<ModSettingsMenuAction>();
             if (binding is IDefaultModSettingsValueBinding<TValue> defaults)
                 actions.Add(new(
+                    ModSettingsStandardActionIds.ResetToDefault,
                     ModSettingsLocalization.Get("button.resetDefault", "Reset to default"),
                     true,
                     () =>
@@ -607,6 +654,7 @@ namespace STS2RitsuLib.Settings
                     }));
 
             actions.Add(new(
+                ModSettingsStandardActionIds.Copy,
                 ModSettingsLocalization.Get("button.copy", "Copy data"),
                 true,
                 () =>
@@ -615,41 +663,121 @@ namespace STS2RitsuLib.Settings
                     context.RequestRefresh();
                 }));
             actions.Add(new(
+                ModSettingsStandardActionIds.Paste,
                 ModSettingsLocalization.Get("button.paste", "Paste data"),
                 () => CanPasteBindingValueFromClipboard(binding),
                 () =>
                 {
-                    if (!TryPasteBindingValueFromClipboard(binding)) return;
+                    if (!TryPasteBindingValueFromClipboard(context, binding)) return;
                     context.MarkDirty(binding);
                     context.RequestRefresh();
                 }));
+            ModSettingsUiActionRegistry.AppendBindingActions(context, binding, actions);
+            return actions;
+        }
+
+        internal static List<ModSettingsMenuAction> BuildListItemMenuActions<TItem>(ModSettingsUiContext context,
+            ModSettingsListItemContext<TItem> itemContext)
+        {
+            var actions = new List<ModSettingsMenuAction>
+            {
+                new(ModSettingsStandardActionIds.MoveUp, ModSettingsLocalization.Get("button.moveUp", "Move up"),
+                    itemContext.CanMoveUp,
+                    itemContext.MoveUp),
+                new(ModSettingsStandardActionIds.MoveDown, ModSettingsLocalization.Get("button.moveDown", "Move down"),
+                    itemContext.CanMoveDown,
+                    itemContext.MoveDown),
+                new(ModSettingsStandardActionIds.Duplicate,
+                    ModSettingsLocalization.Get("button.duplicate", "Duplicate"),
+                    itemContext.SupportsStructuredClipboard,
+                    itemContext.Duplicate),
+                new(ModSettingsStandardActionIds.Copy, ModSettingsLocalization.Get("button.copy", "Copy data"),
+                    itemContext.SupportsStructuredClipboard,
+                    () => { itemContext.TryCopyToClipboard(); }),
+                new(ModSettingsStandardActionIds.Paste, ModSettingsLocalization.Get("button.paste", "Paste data"),
+                    itemContext.CanPasteFromClipboard,
+                    () => { itemContext.TryPasteFromClipboard(); }),
+                new(ModSettingsStandardActionIds.Remove, ModSettingsLocalization.Get("button.remove", "Remove"), true,
+                    itemContext.Remove),
+            };
+            ModSettingsUiActionRegistry.AppendListItemActions(context, itemContext, actions);
+            return actions;
+        }
+
+        internal static List<ModSettingsMenuAction> BuildPageMenuActions(ModSettingsUiContext context,
+            ModSettingsPageUiContext pageContext)
+        {
+            var actions = new List<ModSettingsMenuAction>
+            {
+                new(ModSettingsStandardActionIds.PageCopy, ModSettingsLocalization.Get("button.copy", "Copy data"),
+                    true,
+                    () =>
+                    {
+                        ModSettingsUiChromeClipboard.TryCopyPage(pageContext);
+                        context.RequestRefresh();
+                    }),
+                new(ModSettingsStandardActionIds.PagePaste, ModSettingsLocalization.Get("button.paste", "Paste data"),
+                    () => ModSettingsUiChromeClipboard.CanPastePage(pageContext),
+                    () =>
+                    {
+                        ModSettingsUiChromeClipboard.TryPastePage(pageContext);
+                        context.RequestRefresh();
+                    }),
+            };
+            ModSettingsUiActionRegistry.AppendPageActions(context, pageContext, actions);
+            return actions;
+        }
+
+        internal static List<ModSettingsMenuAction> BuildSectionMenuActions(ModSettingsUiContext context,
+            ModSettingsSectionUiContext sectionContext)
+        {
+            var actions = new List<ModSettingsMenuAction>
+            {
+                new(ModSettingsStandardActionIds.SectionCopy, ModSettingsLocalization.Get("button.copy", "Copy data"),
+                    true,
+                    () =>
+                    {
+                        ModSettingsUiChromeClipboard.TryCopySection(sectionContext);
+                        context.RequestRefresh();
+                    }),
+                new(ModSettingsStandardActionIds.SectionPaste,
+                    ModSettingsLocalization.Get("button.paste", "Paste data"),
+                    () => ModSettingsUiChromeClipboard.CanPasteSection(sectionContext),
+                    () =>
+                    {
+                        ModSettingsUiChromeClipboard.TryPasteSection(sectionContext);
+                        context.RequestRefresh();
+                    }),
+            };
+            ModSettingsUiActionRegistry.AppendSectionActions(context, sectionContext, actions);
             return actions;
         }
 
         private static void CopyBindingValueToClipboard<TValue>(IModSettingsValueBinding<TValue> binding)
         {
             var adapter = ResolveClipboardAdapter(binding);
-            ModSettingsClipboardData.CopyValue(binding, ModSettingsClipboardScope.Self, adapter, binding.Read());
+            ModSettingsClipboardOperations.InvokeCopy(binding, ModSettingsClipboardScope.Self, adapter, binding.Read());
         }
 
         private static bool CanPasteBindingValueFromClipboard<TValue>(IModSettingsValueBinding<TValue> binding)
         {
-            return TryReadClipboardValue(binding, out _);
+            var adapter = ResolveClipboardAdapter(binding);
+            return ModSettingsClipboardOperations.CanPasteBindingValue(binding, adapter);
         }
 
-        private static bool TryPasteBindingValueFromClipboard<TValue>(IModSettingsValueBinding<TValue> binding)
+        private static bool TryPasteBindingValueFromClipboard<TValue>(ModSettingsUiContext context,
+            IModSettingsValueBinding<TValue> binding)
         {
-            if (!TryReadClipboardValue(binding, out var value))
+            var adapter = ResolveClipboardAdapter(binding);
+            if (!ModSettingsClipboardOperations.TryPasteBindingValue(binding, adapter, out var value,
+                    out var failureReason))
+            {
+                context.NotifyPasteFailure(failureReason);
                 return false;
+            }
 
             binding.Write(value);
             return true;
-        }
-
-        private static bool TryReadClipboardValue<TValue>(IModSettingsValueBinding<TValue> binding, out TValue value)
-        {
-            var adapter = ResolveClipboardAdapter(binding);
-            return ModSettingsClipboardData.TryReadValue(binding, adapter, out value);
         }
 
         private static IStructuredModSettingsValueAdapter<TValue> ResolveClipboardAdapter<TValue>(
@@ -660,17 +788,31 @@ namespace STS2RitsuLib.Settings
                 : ModSettingsStructuredData.Json<TValue>();
         }
 
-        private static Control CreateSection(ModSettingsUiContext context, ModSettingsSection section)
+        private static Control CreateSection(ModSettingsUiContext context, ModSettingsPage page,
+            ModSettingsSection section)
         {
+            var sectionUiContext = new ModSettingsSectionUiContext(page, section, context);
+            var sectionMenuActions = BuildSectionMenuActions(context, sectionUiContext);
+            var sectionActionsButton = sectionMenuActions.Count == 0
+                ? null
+                : new ModSettingsActionsButton(sectionMenuActions, context.RequestRefresh);
+
             if (section.IsCollapsible)
-                return new ModSettingsCollapsibleSection(
+            {
+                var collapsible = new ModSettingsCollapsibleSection(
                     section.Title != null
                         ? ModSettingsUiContext.Resolve(section.Title)
                         : ModSettingsLocalization.Get("section.default", "Section"),
                     section.Id,
                     section.Description != null ? ModSettingsUiContext.Resolve(section.Description) : null,
                     section.StartCollapsed,
-                    section.Entries.Select(entry => entry.CreateControl(context)).ToArray());
+                    section.Entries.Select(entry => entry.CreateControl(context)).ToArray(),
+                    sectionActionsButton);
+                if (sectionActionsButton != null)
+                    AttachContextMenuTargets(collapsible, collapsible, sectionActionsButton);
+                return collapsible;
+            }
+
             {
                 var container = new VBoxContainer
                 {
@@ -678,14 +820,44 @@ namespace STS2RitsuLib.Settings
                     MouseFilter = Control.MouseFilterEnum.Ignore,
                 };
                 container.AddThemeConstantOverride("separation", 6);
-                if (section.Title != null)
-                    container.AddChild(CreateRefreshableSectionTitle(context,
-                        () => ModSettingsUiContext.Resolve(section.Title)));
+
+                if (section.Title != null || sectionActionsButton != null)
+                {
+                    var headerRow = new HBoxContainer
+                    {
+                        SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
+                        MouseFilter = Control.MouseFilterEnum.Ignore,
+                        Alignment = BoxContainer.AlignmentMode.Begin,
+                    };
+                    headerRow.AddThemeConstantOverride("separation", 10);
+                    if (section.Title != null)
+                    {
+                        var title = CreateRefreshableSectionTitle(context,
+                            () => ModSettingsUiContext.Resolve(section.Title));
+                        title.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
+                        headerRow.AddChild(title);
+                    }
+                    else
+                    {
+                        headerRow.AddChild(new Control
+                        {
+                            SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
+                            MouseFilter = Control.MouseFilterEnum.Ignore,
+                        });
+                    }
+
+                    if (sectionActionsButton != null)
+                        headerRow.AddChild(sectionActionsButton);
+                    container.AddChild(headerRow);
+                }
+
                 if (section.Description != null)
                     container.AddChild(CreateRefreshableDescriptionLabel(context,
                         () => ModSettingsUiContext.Resolve(section.Description)));
                 foreach (var entry in section.Entries)
                     container.AddChild(entry.CreateControl(context));
+                if (sectionActionsButton != null)
+                    AttachContextMenuTargets(container, container, sectionActionsButton);
                 return container;
             }
         }
@@ -702,7 +874,7 @@ namespace STS2RitsuLib.Settings
             Func<string> textProvider)
         {
             var label = CreateSectionTitle(textProvider());
-            context.RegisterRefresh(() => label.SetTextAutoSize(textProvider()));
+            RegisterRefreshWhenAlive(context, label, () => label.SetTextAutoSize(textProvider()));
             return label;
         }
 
@@ -711,7 +883,7 @@ namespace STS2RitsuLib.Settings
             int fontSize, HorizontalAlignment alignment)
         {
             var label = CreateHeaderLabel(textProvider(), fontSize, alignment);
-            context.RegisterRefresh(() => label.SetTextAutoSize(textProvider()));
+            RegisterRefreshWhenAlive(context, label, () => label.SetTextAutoSize(textProvider()));
             return label;
         }
 
@@ -760,7 +932,7 @@ namespace STS2RitsuLib.Settings
             Func<string> textProvider)
         {
             var label = CreateDescriptionLabel(textProvider());
-            context.RegisterRefresh(() =>
+            RegisterRefreshWhenAlive(context, label, () =>
             {
                 var text = textProvider();
                 label.SetTextAutoSize(text);
@@ -939,24 +1111,8 @@ namespace STS2RitsuLib.Settings
         public static PackedScene SelectionReticleScene =>
             PreloadManager.Cache.GetScene(SceneHelper.GetScenePath("ui/selection_reticle"));
 
-        public static PackedScene TickboxVisualScene =>
-            PreloadManager.Cache.GetScene(SceneHelper.GetScenePath("ui/tickbox"));
-
-        public static PackedScene SliderScene =>
-            PreloadManager.Cache.GetScene(SceneHelper.GetScenePath("ui/volume_slider"));
-
-        public static PackedScene ScrollbarScene =>
-            PreloadManager.Cache.GetScene(SceneHelper.GetScenePath("ui/scrollbar"));
-
         public static Texture2D SettingsButtonTexture =>
             PreloadManager.Cache.GetAsset<Texture2D>("res://images/ui/reward_screen/reward_skip_button.png");
-
-        public static Texture2D LeftArrowTexture =>
-            PreloadManager.Cache.GetAsset<Texture2D>(
-                "res://images/atlases/ui_atlas.sprites/settings_tiny_left_arrow.tres");
-
-        public static Texture2D RightArrowTexture =>
-            PreloadManager.Cache.GetAsset<Texture2D>("res://images/packed/common_ui/settings_tiny_right_arrow.png");
 
         public static ShaderMaterial CreateToneMaterial(ModSettingsButtonTone tone)
         {
@@ -1775,40 +1931,30 @@ namespace STS2RitsuLib.Settings
                 return string.Empty;
 
             if (!IsModifierKey(keyEvent.Keycode) || parts.Count == 0)
-                parts.Add(GetRecordedKeyName(keyEvent.Keycode, distinguishModifierSides));
+                parts.Add(GetRecordedKeyName(keyEvent, distinguishModifierSides));
 
             if (!allowModifierCombos && IsModifierKey(keyEvent.Keycode))
-                return GetRecordedKeyName(keyEvent.Keycode, distinguishModifierSides);
+                return GetRecordedKeyName(keyEvent, distinguishModifierSides);
 
             return string.Join('+', parts);
         }
 
-        private static string GetRecordedKeyName(Key key, bool distinguishModifierSides)
+        /// <summary>
+        ///     Uses <see cref="InputEventKey.PhysicalKeycode" /> when <paramref name="distinguishModifierSides" /> is true
+        ///     so Left Ctrl / Right Shift etc. are distinguished; otherwise uses the logical <see cref="InputEventKey.Keycode" />.
+        /// </summary>
+        private static string GetRecordedKeyName(InputEventKey keyEvent, bool distinguishModifierSides)
         {
-            if (!distinguishModifierSides || !IsModifierKey(key))
-                return key.ToString();
-
-            return key.ToString();
+            var code = distinguishModifierSides ? keyEvent.PhysicalKeycode : keyEvent.Keycode;
+            if (code == Key.None)
+                code = keyEvent.Keycode;
+            return code.ToString();
         }
 
         private static bool IsModifierKey(Key key)
         {
             return key is Key.Shift or Key.Ctrl or Key.Alt or Key.Meta;
         }
-    }
-
-    internal sealed record ModSettingsMenuAction(string Label, Func<bool> IsEnabled, Action Action)
-    {
-        public ModSettingsMenuAction(string label, bool enabled, Action action)
-            : this(label, () => enabled, action)
-        {
-        }
-    }
-
-    public enum ModSettingsClipboardScope
-    {
-        Self = 0,
-        Subtree = 1,
     }
 
     internal sealed record ModSettingsClipboardEnvelope(
@@ -1854,7 +2000,7 @@ namespace STS2RitsuLib.Settings
         {
             var popup = GetPopup();
             _popup = popup;
-            RefreshPopupItems();
+            Callable.From(RefreshPopupItems).CallDeferred();
             popup.PopupHide += () => _preferredPopupPosition = null;
 
             popup.AboutToPopup += () =>
@@ -2119,7 +2265,6 @@ namespace STS2RitsuLib.Settings
 
     internal sealed partial class ModSettingsListControl<TItem> : VBoxContainer
     {
-        private readonly ModSettingsUiContext _context;
         private readonly string _dragToken = Guid.NewGuid().ToString("N");
         private readonly System.Collections.Generic.Dictionary<int, ModSettingsListDropSlot<TItem>> _dropSlots = [];
         private readonly ListModSettingsEntryDefinition<TItem> _entry;
@@ -2132,7 +2277,7 @@ namespace STS2RitsuLib.Settings
 
         public ModSettingsListControl(ModSettingsUiContext context, ListModSettingsEntryDefinition<TItem> entry)
         {
-            _context = context;
+            UiContext = context;
             _entry = entry;
 
             MouseFilter = MouseFilterEnum.Ignore;
@@ -2142,9 +2287,11 @@ namespace STS2RitsuLib.Settings
 
         public ModSettingsListControl()
         {
-            _context = null!;
+            UiContext = null!;
             _entry = null!;
         }
+
+        internal ModSettingsUiContext UiContext { get; }
 
         public override void _Notification(int what)
         {
@@ -2221,11 +2368,11 @@ namespace STS2RitsuLib.Settings
             textColumn.AddThemeConstantOverride("separation", 4);
             header.AddChild(textColumn);
 
-            textColumn.AddChild(ModSettingsUiFactory.CreateRefreshableSectionTitle(_context,
+            textColumn.AddChild(ModSettingsUiFactory.CreateRefreshableSectionTitle(UiContext,
                 () => ModSettingsUiContext.Resolve(_entry.Label)));
 
-            var descriptionLabel = ModSettingsUiFactory.CreateRefreshableDescriptionLabel(_context,
-                () => _context.ComposeBindingDescription(_entry.Description, _entry.Binding));
+            var descriptionLabel = ModSettingsUiFactory.CreateRefreshableDescriptionLabel(UiContext,
+                () => ModSettingsUiContext.ComposeBindingDescription(_entry.Description, _entry.Binding));
             textColumn.AddChild(descriptionLabel);
 
             var summary = new PanelContainer
@@ -2258,7 +2405,8 @@ namespace STS2RitsuLib.Settings
             };
             header.AddChild(addButton);
 
-            if (ModSettingsUiFactory.CreateEntryActionsButton(_context, _entry.Binding) is ModSettingsActionsButton actionsButton)
+            if (ModSettingsUiFactory.CreateEntryActionsButton(UiContext, _entry.Binding) is ModSettingsActionsButton
+                actionsButton)
             {
                 header.AddChild(actionsButton);
                 ModSettingsUiFactory.AttachContextMenuTargets(this, shell, actionsButton);
@@ -2315,13 +2463,13 @@ namespace STS2RitsuLib.Settings
             emptyState.AddChild(emptyLabel);
             _emptyState = emptyState;
 
-            _context.RegisterRefresh(RebuildRows);
+            ModSettingsUiFactory.RegisterRefreshWhenAlive(UiContext, this, RebuildRows);
             RebuildRows();
         }
 
         private void RebuildRows()
         {
-            if (_rows == null)
+            if (_rows == null || !IsInstanceValid(this))
                 return;
 
             ClearActiveDropSlot();
@@ -2347,7 +2495,7 @@ namespace STS2RitsuLib.Settings
         private Control CreateRow(int index, TItem item, int itemCount)
         {
             var itemContext = new ModSettingsListItemContext<TItem>(
-                _context,
+                UiContext,
                 CreateItemBinding(index),
                 index,
                 itemCount,
@@ -2357,7 +2505,7 @@ namespace STS2RitsuLib.Settings
                 index < itemCount - 1 ? () => Mutate(items => MoveItem(items, index, index + 1)) : null,
                 () => Mutate(items => DuplicateItem(items, index)),
                 () => Mutate(items => items.RemoveAt(index)),
-                _context.RequestRefresh);
+                UiContext.RequestRefresh);
 
             return new ModSettingsListItemCard<TItem>(
                 this,
@@ -2376,8 +2524,8 @@ namespace STS2RitsuLib.Settings
             var clone = CloneBindingValue(_entry.Binding.Read());
             mutate(clone);
             _entry.Binding.Write(clone);
-            _context.MarkDirty(_entry.Binding);
-            _context.RequestRefresh();
+            UiContext.MarkDirty(_entry.Binding);
+            UiContext.RequestRefresh();
         }
 
         private IModSettingsValueBinding<TItem> CreateItemBinding(int index)
@@ -2663,24 +2811,9 @@ namespace STS2RitsuLib.Settings
             };
             actions.AddThemeConstantOverride("separation", 8);
             header.AddChild(actions);
-            var actionsButton = new ModSettingsActionsButton([
-                new(ModSettingsLocalization.Get("button.moveUp", "Move up"), itemContext.CanMoveUp,
-                    itemContext.MoveUp),
-                new(ModSettingsLocalization.Get("button.moveDown", "Move down"), itemContext.CanMoveDown,
-                    itemContext.MoveDown),
-                new(ModSettingsLocalization.Get("button.duplicate", "Duplicate"),
-                    itemContext.SupportsStructuredClipboard,
-                    itemContext.Duplicate),
-                new(ModSettingsLocalization.Get("button.copySelf", "Copy self"),
-                    itemContext.SupportsStructuredClipboard,
-                    () => { itemContext.TryCopyToClipboard(); }),
-                new(ModSettingsLocalization.Get("button.copySubtree", "Copy with children"),
-                    itemContext.SupportsStructuredClipboard,
-                    () => { itemContext.TryCopyToClipboard(ModSettingsClipboardScope.Subtree); }),
-                new(ModSettingsLocalization.Get("button.paste", "Paste data"), () => itemContext.CanPasteFromClipboard(),
-                    () => { itemContext.TryPasteFromClipboard(); }),
-                new(ModSettingsLocalization.Get("button.remove", "Remove"), true, itemContext.Remove),
-            ], itemContext.RequestRefresh);
+            var actionsButton = new ModSettingsActionsButton(
+                ModSettingsUiFactory.BuildListItemMenuActions(owner.UiContext, itemContext),
+                itemContext.RequestRefresh);
             actions.AddChild(actionsButton);
             ModSettingsUiFactory.AttachContextMenuTargets(this, outer, actionsButton);
 
@@ -2892,6 +3025,7 @@ namespace STS2RitsuLib.Settings
     {
         private readonly Control[]? _contentControls;
         private readonly string? _description;
+        private readonly ModSettingsActionsButton? _headerActions;
         private readonly string? _sectionId;
         private readonly bool _startCollapsed;
         private readonly string? _title;
@@ -2900,13 +3034,14 @@ namespace STS2RitsuLib.Settings
         private ModSettingsCollapsibleHeaderButton? _toggle;
 
         public ModSettingsCollapsibleSection(string title, string? sectionId, string? description, bool startCollapsed,
-            Control[] contentControls)
+            Control[] contentControls, ModSettingsActionsButton? headerActions = null)
         {
             _title = title;
             _sectionId = sectionId;
             _description = description;
             _startCollapsed = startCollapsed;
             _contentControls = contentControls;
+            _headerActions = headerActions;
             MouseFilter = MouseFilterEnum.Ignore;
             AddThemeConstantOverride("separation", 6);
         }
@@ -2940,8 +3075,34 @@ namespace STS2RitsuLib.Settings
                 {
                     SizeFlagsHorizontal = SizeFlags.ExpandFill,
                 };
-            if (_toggle != null)
-                cardContent.AddChild(_toggle);
+
+            if (_toggle != null || _headerActions != null)
+            {
+                var headerRow = new HBoxContainer
+                {
+                    SizeFlagsHorizontal = SizeFlags.ExpandFill,
+                    MouseFilter = MouseFilterEnum.Ignore,
+                    Alignment = AlignmentMode.Center,
+                };
+                headerRow.AddThemeConstantOverride("separation", 10);
+                if (_toggle != null)
+                {
+                    _toggle.SizeFlagsHorizontal = SizeFlags.ExpandFill;
+                    headerRow.AddChild(_toggle);
+                }
+                else
+                {
+                    headerRow.AddChild(new Control
+                    {
+                        SizeFlagsHorizontal = SizeFlags.ExpandFill,
+                        MouseFilter = MouseFilterEnum.Ignore,
+                    });
+                }
+
+                if (_headerActions != null)
+                    headerRow.AddChild(_headerActions);
+                cardContent.AddChild(headerRow);
+            }
 
             _content = new() { MouseFilter = MouseFilterEnum.Ignore };
             _content.AddThemeConstantOverride("separation", 6);

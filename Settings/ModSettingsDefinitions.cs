@@ -1,8 +1,9 @@
 using System.Collections.Concurrent;
-using System.Text.Json;
-using System.Text.Json.Serialization;
+using System.Globalization;
 using System.Reflection;
 using System.Text;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 using Godot;
 using STS2RitsuLib.Utils.Persistence;
 
@@ -47,56 +48,77 @@ namespace STS2RitsuLib.Settings
     {
         private const string ClipboardKind = "ritsulib.settings.value";
         private static readonly ConcurrentDictionary<Type, string> SchemaSignatureCache = new();
-        private static readonly ConcurrentDictionary<Type, ClipboardSerializableMember[]> SerializableMemberCache = new();
+
+        private static readonly ConcurrentDictionary<Type, ClipboardSerializableMember[]> SerializableMemberCache =
+            new();
 
         public static void CopyValue<TValue>(IModSettingsBinding binding, ModSettingsClipboardScope scope,
             IStructuredModSettingsValueAdapter<TValue> adapter, TValue value)
         {
-            DisplayServer.ClipboardSet(JsonSerializer.Serialize(new ModSettingsClipboardEnvelope(
+            WriteClipboardEnvelope(new(
                 ClipboardKind,
                 typeof(TValue).FullName ?? typeof(TValue).Name,
                 CreateTargetSignature(binding),
                 GetSchemaSignature(typeof(TValue)),
                 scope,
-                adapter.Serialize(value))));
+                adapter.Serialize(value)));
+        }
+
+        internal static void WriteClipboardEnvelope(ModSettingsClipboardEnvelope envelope)
+        {
+            DisplayServer.ClipboardSet(JsonSerializer.Serialize(envelope));
+            ModSettingsClipboardAccess.InvalidateCache();
         }
 
         public static bool TryReadValue<TValue>(IModSettingsBinding binding,
             IStructuredModSettingsValueAdapter<TValue> adapter, out TValue value)
         {
-            var clipboard = DisplayServer.ClipboardGet();
-            if (string.IsNullOrWhiteSpace(clipboard))
+            return TryReadValue(binding, adapter, out value, false);
+        }
+
+        internal static bool TryReadValue<TValue>(IModSettingsBinding binding,
+            IStructuredModSettingsValueAdapter<TValue> adapter, out TValue value,
+            bool requireMatchingSourceBinding)
+        {
+            if (!ModSettingsClipboardAccess.TryGetText(out var clipboard))
             {
                 value = default!;
                 return false;
             }
 
-            if (TryParseEnvelope(clipboard, out var envelope))
+            if (TryDeserializeEnvelope(clipboard, out var envelope)
+                && envelope != null
+                && string.Equals(envelope.Kind, ClipboardKind, StringComparison.Ordinal))
             {
-                if (!TryReadEnvelopePayload<TValue>(binding, envelope, out var payload))
+                if (TryReadEnvelopePayloadForTarget<TValue>(binding, envelope, requireMatchingSourceBinding,
+                        out var payload))
                 {
+                    if (adapter.TryDeserialize(payload, out value))
+                        return true;
+                    if (TryCoerceJsonPayloadToValue(payload, out value))
+                        return true;
                     value = default!;
                     return false;
                 }
 
-                return adapter.TryDeserialize(payload, out value);
-            }
+                if (TryReadCoercedScalarFromEnvelope(binding, envelope, requireMatchingSourceBinding, out value))
+                    return true;
 
-            if (!MatchesJsonShape(typeof(TValue), clipboard))
-            {
                 value = default!;
                 return false;
             }
 
-            return adapter.TryDeserialize(clipboard, out value);
+            if (MatchesJsonShape(typeof(TValue), clipboard)) return adapter.TryDeserialize(clipboard, out value);
+            value = default!;
+            return false;
         }
 
-        private static bool TryParseEnvelope(string clipboard, out ModSettingsClipboardEnvelope? envelope)
+        internal static bool TryDeserializeEnvelope(string clipboard, out ModSettingsClipboardEnvelope? envelope)
         {
             try
             {
                 envelope = JsonSerializer.Deserialize<ModSettingsClipboardEnvelope>(clipboard);
-                return envelope is { Kind: ClipboardKind };
+                return envelope is { Kind: { Length: > 0 } };
             }
             catch
             {
@@ -105,19 +127,28 @@ namespace STS2RitsuLib.Settings
             }
         }
 
-        private static bool TryReadEnvelopePayload<TValue>(IModSettingsBinding binding,
-            ModSettingsClipboardEnvelope? envelope, out string payload)
+        private static bool TryParseEnvelope(string clipboard, out ModSettingsClipboardEnvelope? envelope)
+        {
+            if (!TryDeserializeEnvelope(clipboard, out envelope) || envelope == null)
+                return false;
+
+            return string.Equals(envelope.Kind, ClipboardKind, StringComparison.Ordinal);
+        }
+
+        internal static bool TryReadEnvelopePayloadForTarget<TValue>(IModSettingsBinding binding,
+            ModSettingsClipboardEnvelope? envelope, bool requireMatchingSourceBinding, out string payload)
         {
             payload = string.Empty;
 
-            if (envelope is not { Kind: ClipboardKind })
+            if (envelope is not { Kind: var kind } || !string.Equals(kind, ClipboardKind, StringComparison.Ordinal))
                 return false;
 
             if (!string.Equals(envelope.TypeName, typeof(TValue).FullName ?? typeof(TValue).Name,
                     StringComparison.Ordinal))
                 return false;
 
-            if (!string.Equals(envelope.TargetSignature, CreateTargetSignature(binding), StringComparison.Ordinal))
+            if (requireMatchingSourceBinding
+                && !string.Equals(envelope.TargetSignature, CreateTargetSignature(binding), StringComparison.Ordinal))
                 return false;
 
             if (!string.Equals(envelope.SchemaSignature, GetSchemaSignature(typeof(TValue)), StringComparison.Ordinal))
@@ -128,6 +159,12 @@ namespace STS2RitsuLib.Settings
 
             payload = envelope.Payload;
             return true;
+        }
+
+        private static bool TryReadEnvelopePayload<TValue>(IModSettingsBinding binding,
+            ModSettingsClipboardEnvelope? envelope, out string payload)
+        {
+            return TryReadEnvelopePayloadForTarget<TValue>(binding, envelope, true, out payload);
         }
 
         private static string CreateTargetSignature(IModSettingsBinding binding)
@@ -187,7 +224,8 @@ namespace STS2RitsuLib.Settings
                 if (members.Length == 0)
                     return normalizedType.FullName ?? normalizedType.Name;
 
-                return $"object:{normalizedType.FullName}{{{string.Join(',', members.Select(member => $"{member.JsonName}:{BuildSchemaSignature(member.ValueType, activeTypes)}"))}}}";
+                return
+                    $"object:{normalizedType.FullName}{{{string.Join(',', members.Select(member => $"{member.JsonName}:{BuildSchemaSignature(member.ValueType, activeTypes)}"))}}}";
             }
             finally
             {
@@ -223,15 +261,8 @@ namespace STS2RitsuLib.Settings
             if (IsNumericType(normalizedType))
                 return element.ValueKind == JsonValueKind.Number;
             if (TryGetCollectionElementType(normalizedType, out var elementType))
-            {
-                if (element.ValueKind != JsonValueKind.Array)
-                    return false;
-
-                foreach (var child in element.EnumerateArray())
-                    if (!MatchesElement(elementType, child))
-                        return false;
-                return true;
-            }
+                return element.ValueKind == JsonValueKind.Array &&
+                       element.EnumerateArray().All(child => MatchesElement(elementType, child));
 
             if (element.ValueKind != JsonValueKind.Object)
                 return false;
@@ -263,7 +294,8 @@ namespace STS2RitsuLib.Settings
 
                 foreach (var property in targetType.GetProperties(flags))
                 {
-                    if (property.GetIndexParameters().Length > 0 || property.GetMethod == null || !property.GetMethod.IsPublic)
+                    if (property.GetIndexParameters().Length > 0 || property.GetMethod == null ||
+                        !property.GetMethod.IsPublic)
                         continue;
                     if (property.GetCustomAttribute<JsonIgnoreAttribute>()?.Condition == JsonIgnoreCondition.Always)
                         continue;
@@ -312,7 +344,8 @@ namespace STS2RitsuLib.Settings
             if (type.IsGenericType)
             {
                 var genericType = type.GetGenericTypeDefinition();
-                if (genericType == typeof(List<>) || genericType == typeof(IList<>) || genericType == typeof(IReadOnlyList<>))
+                if (genericType == typeof(List<>) || genericType == typeof(IList<>) ||
+                    genericType == typeof(IReadOnlyList<>))
                 {
                     elementType = type.GetGenericArguments()[0];
                     return true;
@@ -321,6 +354,139 @@ namespace STS2RitsuLib.Settings
 
             elementType = null!;
             return false;
+        }
+
+        private static bool TryReadCoercedScalarFromEnvelope<TValue>(IModSettingsBinding binding,
+            ModSettingsClipboardEnvelope envelope, bool requireMatchingSourceBinding, out TValue value)
+        {
+            value = default!;
+            if (!IsCoercibleScalarTarget(typeof(TValue)))
+                return false;
+
+            if (requireMatchingSourceBinding
+                && !string.Equals(envelope.TargetSignature, CreateTargetSignature(binding), StringComparison.Ordinal))
+                return false;
+
+            return TryCoerceJsonPayloadToValue(envelope.Payload, out value);
+        }
+
+        private static bool IsCoercibleScalarTarget(Type type)
+        {
+            var ut = Nullable.GetUnderlyingType(type) ?? type;
+            return ut == typeof(string) || ut == typeof(bool) || ut.IsEnum || IsNumericType(ut);
+        }
+
+        private static bool TryCoerceJsonPayloadToValue<TValue>(string json, out TValue value)
+        {
+            value = default!;
+            try
+            {
+                using var doc = JsonDocument.Parse(json);
+                return TryCoerceJsonElement(doc.RootElement, out value);
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        private static bool TryCoerceJsonElement<TValue>(JsonElement element, out TValue value)
+        {
+            value = default!;
+            var type = typeof(TValue);
+            var ut = Nullable.GetUnderlyingType(type) ?? type;
+
+            try
+            {
+                if (ut == typeof(string))
+                {
+                    var s = element.ValueKind switch
+                    {
+                        JsonValueKind.String => element.GetString() ?? string.Empty,
+                        JsonValueKind.Number => element.GetRawText(),
+                        JsonValueKind.True => "true",
+                        JsonValueKind.False => "false",
+                        JsonValueKind.Null => string.Empty,
+                        _ => element.GetRawText(),
+                    };
+                    value = (TValue)(object)s;
+                    return true;
+                }
+
+                if (ut == typeof(bool))
+                    switch (element.ValueKind)
+                    {
+                        case JsonValueKind.True:
+                            value = (TValue)(object)true;
+                            return true;
+                        case JsonValueKind.False:
+                            value = (TValue)(object)false;
+                            return true;
+                        case JsonValueKind.String:
+                            if (!bool.TryParse(element.GetString(), out var b)) return false;
+                            value = (TValue)(object)b;
+                            return true;
+
+                        case JsonValueKind.Number:
+                            if (!element.TryGetInt64(out var n)) return false;
+                            value = (TValue)(object)(n != 0);
+                            return true;
+
+                        default:
+                            return false;
+                    }
+
+                if (IsNumericType(ut))
+                {
+                    if (!TryGetNumericDouble(element, out var d))
+                        return false;
+
+                    var converted = Convert.ChangeType(d, ut, CultureInfo.InvariantCulture);
+                    value = (TValue)converted;
+                    return true;
+                }
+
+                if (!ut.IsEnum)
+                    return false;
+
+                switch (element.ValueKind)
+                {
+                    case JsonValueKind.String:
+                    {
+                        var name = element.GetString();
+                        if (string.IsNullOrEmpty(name))
+                            return false;
+                        if (!Enum.TryParse(ut, name, true, out var ev)) return false;
+                        value = (TValue)ev;
+                        return true;
+                    }
+                    case JsonValueKind.Number:
+                    {
+                        if (!element.TryGetInt64(out var li))
+                            return false;
+                        value = (TValue)Enum.ToObject(ut, li);
+                        return true;
+                    }
+                    default:
+                        return false;
+                }
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        private static bool TryGetNumericDouble(JsonElement element, out double d)
+        {
+            d = 0;
+            return element.ValueKind switch
+            {
+                JsonValueKind.Number => element.TryGetDouble(out d),
+                JsonValueKind.String when double.TryParse(element.GetString(), NumberStyles.Float,
+                    CultureInfo.InvariantCulture, out d) => true,
+                _ => false,
+            };
         }
 
         private sealed record ClipboardSerializableMember(string JsonName, Type ValueType);
@@ -946,7 +1112,7 @@ namespace STS2RitsuLib.Settings
             if (Binding is not IStructuredModSettingsValueBinding<TItem> structured)
                 return false;
 
-            ModSettingsClipboardData.CopyValue(Binding, scope, structured.Adapter, Item);
+            ModSettingsClipboardOperations.InvokeCopy(Binding, scope, structured.Adapter, Item);
             return true;
         }
 
@@ -955,7 +1121,7 @@ namespace STS2RitsuLib.Settings
             if (Binding is not IStructuredModSettingsValueBinding<TItem> structured)
                 return false;
 
-            return ModSettingsClipboardData.TryReadValue(Binding, structured.Adapter, out TItem _);
+            return ModSettingsClipboardOperations.CanPasteBindingValue(Binding, structured.Adapter);
         }
 
         public bool TryPasteFromClipboard()
@@ -963,8 +1129,12 @@ namespace STS2RitsuLib.Settings
             if (Binding is not IStructuredModSettingsValueBinding<TItem> structured)
                 return false;
 
-            if (!ModSettingsClipboardData.TryReadValue(Binding, structured.Adapter, out TItem value))
+            if (!ModSettingsClipboardOperations.TryPasteBindingValue(Binding, structured.Adapter, out var value,
+                    out var failureReason))
+            {
+                _uiContext.NotifyPasteFailure(failureReason);
                 return false;
+            }
 
             Update(value);
             return true;

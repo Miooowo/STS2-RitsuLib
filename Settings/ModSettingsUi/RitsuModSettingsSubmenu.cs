@@ -11,6 +11,7 @@ namespace STS2RitsuLib.Settings
     {
         private const float SidebarWidth = 324f;
         private const double AutosaveDelaySeconds = 0.35;
+        private const int ScrollContentRightGutter = 12;
 
         private readonly HashSet<IModSettingsBinding> _dirtyBindings = [];
         private readonly HashSet<string> _expandedModIds = new(StringComparer.OrdinalIgnoreCase);
@@ -32,6 +33,7 @@ namespace STS2RitsuLib.Settings
         private bool _localeSubscribed;
         private VBoxContainer _modButtonList = null!;
         private HBoxContainer _pageTabRow = null!;
+        private AcceptDialog? _pasteErrorDialog;
         private bool _refreshQueued;
         private double _saveTimer = -1;
         private ScrollContainer _scrollContainer = null!;
@@ -183,6 +185,42 @@ namespace STS2RitsuLib.Settings
             _refreshActions.Add(action);
         }
 
+        internal void ShowPasteFailure(ModSettingsPasteFailureReason reason)
+        {
+            if (reason == ModSettingsPasteFailureReason.None)
+                return;
+
+            var key = reason switch
+            {
+                ModSettingsPasteFailureReason.ClipboardEmpty => "clipboard.pasteFailedEmpty",
+                ModSettingsPasteFailureReason.PasteRuleDenied => "clipboard.pasteFailedBlocked",
+                _ => "clipboard.pasteFailedIncompatible",
+            };
+
+            var fallback = reason switch
+            {
+                ModSettingsPasteFailureReason.ClipboardEmpty => "Clipboard is empty or unavailable.",
+                ModSettingsPasteFailureReason.PasteRuleDenied => "Paste was blocked by a custom rule.",
+                _ => "Clipboard contents are not compatible with this setting.",
+            };
+
+            EnsurePasteErrorDialog();
+            _pasteErrorDialog!.Title =
+                ModSettingsLocalization.Get("clipboard.pasteFailedTitle", "Paste failed");
+            _pasteErrorDialog.OkButtonText = ModSettingsLocalization.Get("clipboard.pasteErrorOk", "OK");
+            _pasteErrorDialog.DialogText = ModSettingsLocalization.Get(key, fallback);
+            _pasteErrorDialog.PopupCentered();
+        }
+
+        private void EnsurePasteErrorDialog()
+        {
+            if (_pasteErrorDialog != null)
+                return;
+
+            _pasteErrorDialog = new() { Name = "PasteErrorDialog" };
+            AddChild(_pasteErrorDialog);
+        }
+
         private void FlushRefreshActions()
         {
             _refreshQueued = false;
@@ -282,13 +320,22 @@ namespace STS2RitsuLib.Settings
             };
             root.AddChild(scroll);
 
+            var sidebarScrollFrame = new MarginContainer
+            {
+                SizeFlagsHorizontal = SizeFlags.ExpandFill,
+                SizeFlagsVertical = SizeFlags.ExpandFill,
+                MouseFilter = MouseFilterEnum.Ignore,
+            };
+            sidebarScrollFrame.AddThemeConstantOverride("margin_right", ScrollContentRightGutter);
+            scroll.AddChild(sidebarScrollFrame);
+
             _modButtonList = new()
             {
                 SizeFlagsHorizontal = SizeFlags.ExpandFill,
                 MouseFilter = MouseFilterEnum.Ignore,
             };
             _modButtonList.AddThemeConstantOverride("separation", 12);
-            scroll.AddChild(_modButtonList);
+            sidebarScrollFrame.AddChild(_modButtonList);
             return panel;
         }
 
@@ -320,7 +367,7 @@ namespace STS2RitsuLib.Settings
                 AnchorBottom = 1f,
                 MouseFilter = MouseFilterEnum.Ignore,
             };
-            root.AddThemeConstantOverride("separation", 14);
+            root.AddThemeConstantOverride("separation", 10);
             frame.AddChild(root);
 
             _pageTabRow = new()
@@ -339,13 +386,22 @@ namespace STS2RitsuLib.Settings
             };
             root.AddChild(_scrollContainer);
 
+            var contentScrollFrame = new MarginContainer
+            {
+                SizeFlagsHorizontal = SizeFlags.ExpandFill,
+                SizeFlagsVertical = SizeFlags.ExpandFill,
+                MouseFilter = MouseFilterEnum.Ignore,
+            };
+            contentScrollFrame.AddThemeConstantOverride("margin_right", ScrollContentRightGutter);
+            _scrollContainer.AddChild(contentScrollFrame);
+
             _contentList = new()
             {
                 SizeFlagsHorizontal = SizeFlags.ExpandFill,
                 MouseFilter = MouseFilterEnum.Ignore,
             };
             _contentList.AddThemeConstantOverride("separation", 8);
-            _scrollContainer.AddChild(_contentList);
+            contentScrollFrame.AddChild(_contentList);
 
             return panel;
         }
@@ -421,7 +477,8 @@ namespace STS2RitsuLib.Settings
                     () =>
                     {
                         _selectedModId = modId;
-                        _selectedPageId = pages.FirstOrDefault(page => string.IsNullOrWhiteSpace(page.ParentPageId))?.Id;
+                        _selectedPageId = pages.FirstOrDefault(page => string.IsNullOrWhiteSpace(page.ParentPageId))
+                            ?.Id;
                         _selectedSectionId = null;
                         ExpandOnlyMod(modId);
                         _focusSelectedPageButtonOnNextRefresh = true;
@@ -460,6 +517,7 @@ namespace STS2RitsuLib.Settings
         private void RebuildContent()
         {
             _pageTabRow.FreeChildren();
+            _pageTabRow.Visible = false;
             _contentList.FreeChildren();
             _refreshActions.Clear();
 
@@ -502,8 +560,6 @@ namespace STS2RitsuLib.Settings
                      !string.Equals(page.Id, _selectedPageId, StringComparison.OrdinalIgnoreCase))))
                 _selectedPageId = rootPages[0].Id;
 
-            _pageTabRow.Visible = false;
-
             var pageToRender = ResolveSelectedPage();
             if (pageToRender == null)
             {
@@ -513,18 +569,22 @@ namespace STS2RitsuLib.Settings
                 return;
             }
 
-            if (!string.IsNullOrWhiteSpace(pageToRender.ParentPageId))
-            {
-                var backButton = new ModSettingsSidebarButton(ModSettingsLocalization.Get("button.back", "Back"), () =>
-                {
-                    _selectedPageId = pageToRender.ParentPageId;
-                    RebuildContent();
-                });
-                backButton.CustomMinimumSize = new(140f, 48f);
-                _contentList.AddChild(backButton);
-            }
-
             var context = new ModSettingsUiContext(this);
+            var isChildPage = !string.IsNullOrWhiteSpace(pageToRender.ParentPageId);
+            Action onBack = isChildPage
+                ? () =>
+                {
+                    _selectedPageId = pageToRender.ParentPageId!;
+                    RebuildContent();
+                }
+                : static () => { };
+
+            _pageTabRow.Visible = true;
+            var pageHeader = ModSettingsUiFactory.CreateModSettingsPageHeaderBar(context, pageToRender, isChildPage,
+                onBack);
+            pageHeader.SizeFlagsHorizontal = SizeFlags.ExpandFill;
+            _pageTabRow.AddChild(pageHeader);
+
             _contentList.AddChild(ModSettingsUiFactory.CreatePageContent(context, pageToRender));
             RefreshFocusNavigation();
             Callable.From(ScrollToSelectedAnchor).CallDeferred();

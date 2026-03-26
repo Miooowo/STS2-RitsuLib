@@ -86,6 +86,7 @@
   "button.add": "新增",
   "button.clear": "清除",
   "button.actionsShort": "操作",
+  "button.actionsGlyph": "\u22ee",
   "button.resetDefault": "还原默认值",
   "color.title": "颜色编辑器",
   "color.mode.rgb": "RGB",
@@ -114,5 +115,10 @@
   "ritsulib.showcase.details.field.label": "标签",
   "ritsulib.showcase.details.field.value": "值",
   "button.copySelf": "复制自身",
-  "button.copySubtree": "复制包括子项"
+  "button.copySubtree": "复制包括子项",
+  "clipboard.pasteFailedTitle": "粘贴失败",
+  "clipboard.pasteErrorOk": "确定",
+  "clipboard.pasteFailedEmpty": "剪贴板为空或不可用。",
+  "clipboard.pasteFailedBlocked": "粘贴被自定义规则阻止。",
+  "clipboard.pasteFailedIncompatible": "剪贴板内容与当前设置项不兼容。"
 }

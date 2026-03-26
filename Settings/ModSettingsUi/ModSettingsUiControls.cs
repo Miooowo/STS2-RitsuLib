@@ -2,983 +2,12 @@ using System.Globalization;
 using Godot;
 using Godot.Collections;
 using MegaCrit.Sts2.addons.mega_text;
-using MegaCrit.Sts2.Core.Assets;
 using MegaCrit.Sts2.Core.Helpers;
-using MegaCrit.Sts2.Core.Modding;
 using MegaCrit.Sts2.Core.Nodes.Screens.Settings;
-using STS2RitsuLib.Utils;
-using STS2RitsuLib.Utils.Persistence;
 using Array = System.Array;
-using Timer = Godot.Timer;
 
 namespace STS2RitsuLib.Settings
 {
-    internal sealed class ModSettingsUiContext(RitsuModSettingsSubmenu submenu)
-    {
-        public static string Resolve(ModSettingsText? text, string fallback = "")
-        {
-            return text?.Resolve() ?? fallback;
-        }
-
-        public static string ResolvePageTitle(ModSettingsPage page)
-        {
-            return ModSettingsLocalization.ResolvePageDisplayName(page);
-        }
-
-        public string? ResolvePageDescription(ModSettingsPage page)
-        {
-            var resolved = page.Description?.Resolve();
-            if (!string.IsNullOrWhiteSpace(resolved))
-                return resolved;
-
-            return ModManager.AllMods
-                .FirstOrDefault(mod => string.Equals(mod.manifest?.id, page.ModId, StringComparison.OrdinalIgnoreCase))
-                ?.manifest?.description;
-        }
-
-        public string ComposeBindingDescription(ModSettingsText? description, IModSettingsBinding binding)
-        {
-            if (binding is ITransientModSettingsBinding)
-            {
-                var transientText = ModSettingsLocalization.Get("scope.transient", "Preview only - not persisted");
-                var transientDescription = Resolve(description);
-                return string.IsNullOrWhiteSpace(transientDescription)
-                    ? transientText
-                    : $"{transientDescription}  [color=#B9B09A]- {transientText}[/color]";
-            }
-
-            var scopeText = binding.Scope == SaveScope.Profile
-                ? ModSettingsLocalization.Get("scope.profile", "Stored per profile")
-                : ModSettingsLocalization.Get("scope.global", "Stored globally");
-
-            var resolvedDescription = Resolve(description);
-            return string.IsNullOrWhiteSpace(resolvedDescription)
-                ? scopeText
-                : $"{resolvedDescription}  [color=#B9B09A]- {scopeText}[/color]";
-        }
-
-        public void MarkDirty(IModSettingsBinding binding)
-        {
-            submenu.MarkDirty(binding);
-        }
-
-        public void RequestRefresh()
-        {
-            submenu.RequestRefresh();
-        }
-
-        public void RegisterRefresh(Action action)
-        {
-            submenu.RegisterRefreshAction(action);
-        }
-
-        public void NavigateToPage(string pageId)
-        {
-            submenu.NavigateToPage(pageId);
-        }
-    }
-
-    internal static class ModSettingsUiFactory
-    {
-        private const float EntryControlWidth = 248f;
-        private const float PageContentWidth = 0f;
-
-        public static Control CreatePageContent(ModSettingsUiContext context, ModSettingsPage page)
-        {
-            var container = new VBoxContainer
-            {
-                Name = $"Page_{SanitizeName(page.ModId)}_{SanitizeName(page.Id)}",
-                SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
-                MouseFilter = Control.MouseFilterEnum.Ignore,
-            };
-
-            container.AddThemeConstantOverride("separation", 8);
-
-            var pageDescription =
-                CreateRefreshableDescriptionLabel(context, () => context.ResolvePageDescription(page) ?? string.Empty);
-            container.AddChild(pageDescription);
-            pageDescription.Visible = !string.IsNullOrWhiteSpace(pageDescription.Text);
-
-            for (var index = 0; index < page.Sections.Count; index++)
-            {
-                var section = page.Sections[index];
-                if (index > 0)
-                    container.AddChild(CreateDivider());
-
-                container.AddChild(CreateSection(context, section));
-            }
-
-            return container;
-        }
-
-        public static Control CreateToggleEntry(ModSettingsUiContext context, ToggleModSettingsEntryDefinition entry)
-        {
-            var control = new ModSettingsToggleControl(
-                entry.Binding.Read(),
-                value =>
-                {
-                    entry.Binding.Write(value);
-                    context.MarkDirty(entry.Binding);
-                    context.RequestRefresh();
-                });
-            context.RegisterRefresh(() => control.SetValue(entry.Binding.Read()));
-
-            return CreateSettingLine(
-                context,
-                () => ModSettingsUiContext.Resolve(entry.Label),
-                () => context.ComposeBindingDescription(entry.Description, entry.Binding),
-                control,
-                entry.Binding);
-        }
-
-        public static Control CreateSliderEntry(ModSettingsUiContext context, SliderModSettingsEntryDefinition entry)
-        {
-            var control = new ModSettingsSliderControl(
-                entry.Binding.Read(),
-                entry.MinValue,
-                entry.MaxValue,
-                entry.Step,
-                FormatValue,
-                value =>
-                {
-                    entry.Binding.Write(value);
-                    context.MarkDirty(entry.Binding);
-                    context.RequestRefresh();
-                });
-            context.RegisterRefresh(() => control.SetValue(entry.Binding.Read()));
-
-            return CreateSettingLine(
-                context,
-                () => ModSettingsUiContext.Resolve(entry.Label),
-                () => context.ComposeBindingDescription(entry.Description, entry.Binding),
-                control,
-                entry.Binding);
-
-            string FormatValue(float value)
-            {
-                return entry.ValueFormatter?.Invoke(value) ?? value.ToString("0.##");
-            }
-        }
-
-        public static Control CreateChoiceEntry<TValue>(ModSettingsUiContext context,
-            ChoiceModSettingsEntryDefinition<TValue> entry)
-        {
-            var resolvedOptions = entry.Options
-                .Select(option => (option.Value, Label: ModSettingsUiContext.Resolve(option.Label)))
-                .ToArray();
-
-            Control control;
-            Action refreshRegistration;
-
-            if (entry.Presentation == ModSettingsChoicePresentation.Dropdown)
-            {
-                var dropdown = new ModSettingsDropdownChoiceControl<TValue>(
-                    resolvedOptions,
-                    entry.Binding.Read(),
-                    value =>
-                    {
-                        entry.Binding.Write(value);
-                        context.MarkDirty(entry.Binding);
-                        context.RequestRefresh();
-                    });
-                control = dropdown;
-                refreshRegistration = () => dropdown.SetValue(entry.Binding.Read());
-            }
-            else
-            {
-                var stepper = new ModSettingsChoiceControl<TValue>(
-                    resolvedOptions,
-                    entry.Binding.Read(),
-                    value =>
-                    {
-                        entry.Binding.Write(value);
-                        context.MarkDirty(entry.Binding);
-                        context.RequestRefresh();
-                    });
-                control = stepper;
-                refreshRegistration = () => stepper.SetValue(entry.Binding.Read());
-            }
-
-            context.RegisterRefresh(refreshRegistration);
-
-            return CreateSettingLine(
-                context,
-                () => ModSettingsUiContext.Resolve(entry.Label),
-                () => context.ComposeBindingDescription(entry.Description, entry.Binding),
-                control,
-                entry.Binding);
-        }
-
-        public static Control CreateColorEntry(ModSettingsUiContext context, ColorModSettingsEntryDefinition entry)
-        {
-            var control = new ModSettingsColorControl(
-                entry.Binding.Read(),
-                value =>
-                {
-                    entry.Binding.Write(value);
-                    context.MarkDirty(entry.Binding);
-                    context.RequestRefresh();
-                });
-            context.RegisterRefresh(() => control.SetValue(entry.Binding.Read()));
-
-            return CreateSettingLine(
-                context,
-                () => ModSettingsUiContext.Resolve(entry.Label),
-                () => context.ComposeBindingDescription(entry.Description, entry.Binding),
-                control,
-                entry.Binding);
-        }
-
-        public static Control CreateKeyBindingEntry(ModSettingsUiContext context,
-            KeyBindingModSettingsEntryDefinition entry)
-        {
-            var control = new ModSettingsKeyBindingControl(
-                entry.Binding.Read(),
-                entry.AllowModifierCombos,
-                entry.AllowModifierOnly,
-                entry.DistinguishModifierSides,
-                value =>
-                {
-                    entry.Binding.Write(value);
-                    context.MarkDirty(entry.Binding);
-                    context.RequestRefresh();
-                });
-            context.RegisterRefresh(() => control.SetValue(entry.Binding.Read()));
-
-            return CreateSettingLine(
-                context,
-                () => ModSettingsUiContext.Resolve(entry.Label),
-                () => context.ComposeBindingDescription(entry.Description, entry.Binding),
-                control,
-                entry.Binding);
-        }
-
-        public static Control CreateButtonEntry(ModSettingsUiContext context, ButtonModSettingsEntryDefinition entry)
-        {
-            var control = new ModSettingsTextButton(
-                ModSettingsUiContext.Resolve(entry.ButtonText),
-                entry.Tone,
-                () =>
-                {
-                    entry.Action();
-                    context.RequestRefresh();
-                });
-
-            return CreateSettingLine(
-                context,
-                () => ModSettingsUiContext.Resolve(entry.Label),
-                () => ModSettingsUiContext.Resolve(entry.Description),
-                control);
-        }
-
-        public static Control CreateHeaderEntry(ModSettingsUiContext context, HeaderModSettingsEntryDefinition entry)
-        {
-            var container = new VBoxContainer
-            {
-                CustomMinimumSize = new(0f, 48f),
-                SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
-                MouseFilter = Control.MouseFilterEnum.Ignore,
-            };
-            container.AddThemeConstantOverride("separation", 2);
-            container.AddChild(CreateRefreshableSectionTitle(context, () => ModSettingsUiContext.Resolve(entry.Label)));
-            if (entry.Description != null)
-                container.AddChild(CreateRefreshableDescriptionLabel(context,
-                    () => ModSettingsUiContext.Resolve(entry.Description)));
-            return container;
-        }
-
-        public static Control CreateParagraphEntry(ModSettingsUiContext context,
-            ParagraphModSettingsEntryDefinition entry)
-        {
-            return CreateRefreshableDescriptionLabel(context, () => ModSettingsUiContext.Resolve(entry.Label));
-        }
-
-        public static Control CreateImageEntry(ModSettingsUiContext context, ImageModSettingsEntryDefinition entry)
-        {
-            var container = new VBoxContainer
-            {
-                SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
-                MouseFilter = Control.MouseFilterEnum.Ignore,
-            };
-            container.AddThemeConstantOverride("separation", 8);
-            container.AddChild(CreateRefreshableSectionTitle(context, () => ModSettingsUiContext.Resolve(entry.Label)));
-
-            if (entry.Description != null)
-                container.AddChild(CreateRefreshableDescriptionLabel(context,
-                    () => ModSettingsUiContext.Resolve(entry.Description)));
-
-            var surface = new PanelContainer
-            {
-                SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
-                CustomMinimumSize = new(0f, entry.PreviewHeight),
-                MouseFilter = Control.MouseFilterEnum.Ignore,
-            };
-            surface.AddThemeStyleboxOverride("panel", CreateEntrySurfaceStyle());
-
-            var preview = new TextureRect
-            {
-                Texture = entry.TextureProvider(),
-                ExpandMode = TextureRect.ExpandModeEnum.IgnoreSize,
-                StretchMode = TextureRect.StretchModeEnum.KeepAspectCentered,
-                CustomMinimumSize = new(0f, entry.PreviewHeight),
-                SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
-                MouseFilter = Control.MouseFilterEnum.Ignore,
-            };
-            context.RegisterRefresh(() => preview.Texture = entry.TextureProvider());
-            surface.AddChild(preview);
-            container.AddChild(surface);
-            return container;
-        }
-
-        public static Control CreateListEntry<TItem>(ModSettingsUiContext context,
-            ListModSettingsEntryDefinition<TItem> entry)
-        {
-            return new ModSettingsListControl<TItem>(context, entry);
-        }
-
-        public static Control CreateIntSliderEntry(ModSettingsUiContext context,
-            IntSliderModSettingsEntryDefinition entry)
-        {
-            var control = new ModSettingsSliderControl(
-                entry.Binding.Read(),
-                entry.MinValue,
-                entry.MaxValue,
-                entry.Step,
-                FormatValue,
-                value =>
-                {
-                    entry.Binding.Write(Mathf.RoundToInt(value));
-                    context.MarkDirty(entry.Binding);
-                    context.RequestRefresh();
-                });
-            context.RegisterRefresh(() => control.SetValue(entry.Binding.Read()));
-
-            return CreateSettingLine(
-                context,
-                () => ModSettingsUiContext.Resolve(entry.Label),
-                () => context.ComposeBindingDescription(entry.Description, entry.Binding),
-                control,
-                entry.Binding);
-
-            string FormatValue(float value)
-            {
-                var intValue = Mathf.RoundToInt(value);
-                return entry.ValueFormatter?.Invoke(intValue) ?? intValue.ToString();
-            }
-        }
-
-        public static Control CreateSubpageEntry(ModSettingsUiContext context, SubpageModSettingsEntryDefinition entry)
-        {
-            var control = new ModSettingsTextButton(
-                ModSettingsUiContext.Resolve(entry.ButtonText, ModSettingsLocalization.Get("button.open", "Open")),
-                ModSettingsButtonTone.Accent,
-                () => context.NavigateToPage(entry.TargetPageId));
-            control.CustomMinimumSize = new(248f, 56f);
-
-            return CreateSettingLine(
-                context,
-                () => ModSettingsUiContext.Resolve(entry.Label),
-                () => ModSettingsUiContext.Resolve(entry.Description),
-                control);
-        }
-
-        public static MarginContainer CreateModdingScreenButtonLine(Action openAction)
-        {
-            var line = new MarginContainer
-            {
-                Name = "RitsuLibModSettings",
-                CustomMinimumSize = new(0f, 64f),
-            };
-
-            line.AddThemeConstantOverride("margin_left", 12);
-            line.AddThemeConstantOverride("margin_right", 12);
-
-            var row = new HBoxContainer
-            {
-                Name = "ContentRow",
-                SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
-                SizeFlagsVertical = Control.SizeFlags.Fill,
-                Alignment = BoxContainer.AlignmentMode.Center,
-                MouseFilter = Control.MouseFilterEnum.Ignore,
-            };
-            row.AddThemeConstantOverride("separation", 24);
-            line.AddChild(row);
-
-            var label = CreateHeaderLabel(
-                ModSettingsLocalization.Get("entry.title", "Mod Settings (RitsuLib)"),
-                28,
-                HorizontalAlignment.Left);
-            label.Name = "Label";
-            label.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
-            row.AddChild(label);
-
-            var button =
-                new ModSettingsSettingsEntryButton(ModSettingsLocalization.Get("button.open", "Open"), openAction)
-                {
-                    Name = "RitsuLibModSettingsButton",
-                    FocusNeighborLeft = new("."),
-                    FocusNeighborRight = new("."),
-                };
-            button.CustomMinimumSize = new(320f, 64f);
-            row.AddChild(button);
-
-            return line;
-        }
-
-        public static ModSettingsSidebarButton CreateSidebarButton(string text, Action onPressed,
-            ModSettingsSidebarItemKind kind = ModSettingsSidebarItemKind.Page,
-            string? prefix = null,
-            int indentLevel = 0)
-        {
-            return new(text, onPressed, kind, prefix, indentLevel);
-        }
-
-        public static ColorRect CreateDivider()
-        {
-            return new()
-            {
-                CustomMinimumSize = new(0f, 2f),
-                MouseFilter = Control.MouseFilterEnum.Ignore,
-                Color = new(0.909804f, 0.862745f, 0.745098f, 0.25098f),
-            };
-        }
-
-        private static MarginContainer CreateSettingLine<TValue>(ModSettingsUiContext context,
-            Func<string> labelProvider,
-            Func<string> descriptionProvider, Control valueControl, IModSettingsValueBinding<TValue> binding)
-        {
-            return CreateSettingLine(context, labelProvider, descriptionProvider, valueControl,
-                CreateEntryActionsButton(context, binding));
-        }
-
-        private static MarginContainer CreateSettingLine(ModSettingsUiContext context, Func<string> labelProvider,
-            Func<string> descriptionProvider, Control valueControl, Control? actionControl = null)
-        {
-            var descriptionText = descriptionProvider();
-            var line = new MarginContainer
-            {
-                CustomMinimumSize = new(0f, string.IsNullOrWhiteSpace(descriptionText) ? 64f : 86f),
-            };
-
-            line.AddThemeConstantOverride("margin_left", 6);
-            line.AddThemeConstantOverride("margin_right", 6);
-            line.AddThemeConstantOverride("margin_top", 4);
-            line.AddThemeConstantOverride("margin_bottom", 4);
-
-            var surface = new PanelContainer
-            {
-                SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
-                MouseFilter = Control.MouseFilterEnum.Ignore,
-            };
-            surface.AddThemeStyleboxOverride("panel", CreateEntrySurfaceStyle());
-            line.AddChild(surface);
-
-            var row = new HBoxContainer
-            {
-                SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
-                MouseFilter = Control.MouseFilterEnum.Ignore,
-                Alignment = BoxContainer.AlignmentMode.Center,
-            };
-            row.AddThemeConstantOverride("separation", 24);
-            surface.AddChild(row);
-
-            var leftColumn = new VBoxContainer
-            {
-                SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
-                MouseFilter = Control.MouseFilterEnum.Ignore,
-            };
-            leftColumn.AddThemeConstantOverride("separation", 4);
-
-            var label = CreateRefreshableHeaderLabel(context, labelProvider, 28, HorizontalAlignment.Left);
-            label.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
-            leftColumn.AddChild(label);
-
-            var descriptionLabel = CreateRefreshableDescriptionLabel(context, descriptionProvider);
-            descriptionLabel.Visible = !string.IsNullOrWhiteSpace(descriptionText);
-            leftColumn.AddChild(descriptionLabel);
-
-            row.AddChild(leftColumn);
-
-            valueControl.CustomMinimumSize = new(Math.Max(EntryControlWidth, valueControl.CustomMinimumSize.X),
-                valueControl.CustomMinimumSize.Y);
-            valueControl.SizeFlagsHorizontal = Control.SizeFlags.ShrinkEnd;
-            row.AddChild(valueControl);
-
-            if (actionControl == null) return line;
-            row.AddChild(actionControl);
-            if (actionControl is ModSettingsActionsButton actionsButton)
-                AttachContextMenuTargets(line, valueControl, actionsButton);
-
-            return line;
-        }
-
-        private const string ContextMenuAttachedMetaKey = "_ritsulib_context_menu_attached";
-
-        internal static void AttachContextMenuTargets(Control line, Control valueControl, ModSettingsActionsButton button)
-        {
-            AttachContextMenuRecursively(line, button);
-            AttachContextMenuRecursively(valueControl, button);
-        }
-
-        private static void AttachContextMenuRecursively(Control target, ModSettingsActionsButton button)
-        {
-            AttachContextMenu(target, button);
-            foreach (var child in target.GetChildren())
-                if (child is Control childControl)
-                    AttachContextMenuRecursively(childControl, button);
-        }
-
-        internal static void AttachContextMenu(Control target, ModSettingsActionsButton button)
-        {
-            if (target.HasMeta(ContextMenuAttachedMetaKey))
-                return;
-
-            target.SetMeta(ContextMenuAttachedMetaKey, true);
-
-            if (target.MouseFilter == Control.MouseFilterEnum.Ignore)
-                target.MouseFilter = Control.MouseFilterEnum.Pass;
-
-            var longPressTimer = new Timer
-            {
-                OneShot = true,
-                WaitTime = 0.55f,
-                Autostart = false,
-                ProcessCallback = Timer.TimerProcessCallback.Idle,
-            };
-            target.AddChild(longPressTimer);
-            var pendingTouchPosition = Vector2.Zero;
-            longPressTimer.Timeout += () => button.OpenAt(pendingTouchPosition);
-
-            target.GuiInput += @event =>
-            {
-                switch (@event)
-                {
-                    case InputEventScreenTouch touch:
-                    {
-                        if (touch.Pressed)
-                        {
-                            pendingTouchPosition = target.GetGlobalTransformWithCanvas().Origin + touch.Position;
-                            longPressTimer.Start();
-                        }
-                        else
-                        {
-                            longPressTimer.Stop();
-                        }
-
-                        return;
-                    }
-                    case InputEventScreenDrag:
-                        longPressTimer.Stop();
-                        return;
-                }
-
-                if (@event is not InputEventMouseButton
-                    {
-                        Pressed: true,
-                        ButtonIndex: MouseButton.Right,
-                    })
-                    return;
-
-                button.OpenAt(target.GetGlobalMousePosition());
-                target.GetViewport().SetInputAsHandled();
-            };
-        }
-
-        internal static Control? CreateEntryActionsButton<TValue>(ModSettingsUiContext context,
-            IModSettingsValueBinding<TValue> binding)
-        {
-            var actions = BuildBindingActions(context, binding);
-            return actions.Count == 0 ? null : new ModSettingsActionsButton(actions, context.RequestRefresh);
-        }
-
-        private static List<ModSettingsMenuAction> BuildBindingActions<TValue>(ModSettingsUiContext context,
-            IModSettingsValueBinding<TValue> binding)
-        {
-            var actions = new List<ModSettingsMenuAction>();
-            if (binding is IDefaultModSettingsValueBinding<TValue> defaults)
-                actions.Add(new(
-                    ModSettingsLocalization.Get("button.resetDefault", "Reset to default"),
-                    true,
-                    () =>
-                    {
-                        binding.Write(defaults.CreateDefaultValue());
-                        context.MarkDirty(binding);
-                        context.RequestRefresh();
-                    }));
-
-            actions.Add(new(
-                ModSettingsLocalization.Get("button.copy", "Copy data"),
-                true,
-                () =>
-                {
-                    CopyBindingValueToClipboard(binding);
-                    context.RequestRefresh();
-                }));
-            actions.Add(new(
-                ModSettingsLocalization.Get("button.paste", "Paste data"),
-                () => CanPasteBindingValueFromClipboard(binding),
-                () =>
-                {
-                    if (!TryPasteBindingValueFromClipboard(binding)) return;
-                    context.MarkDirty(binding);
-                    context.RequestRefresh();
-                }));
-            return actions;
-        }
-
-        private static void CopyBindingValueToClipboard<TValue>(IModSettingsValueBinding<TValue> binding)
-        {
-            var adapter = ResolveClipboardAdapter(binding);
-            ModSettingsClipboardData.CopyValue(binding, ModSettingsClipboardScope.Self, adapter, binding.Read());
-        }
-
-        private static bool CanPasteBindingValueFromClipboard<TValue>(IModSettingsValueBinding<TValue> binding)
-        {
-            return TryReadClipboardValue(binding, out _);
-        }
-
-        private static bool TryPasteBindingValueFromClipboard<TValue>(IModSettingsValueBinding<TValue> binding)
-        {
-            if (!TryReadClipboardValue(binding, out var value))
-                return false;
-
-            binding.Write(value);
-            return true;
-        }
-
-        private static bool TryReadClipboardValue<TValue>(IModSettingsValueBinding<TValue> binding, out TValue value)
-        {
-            var adapter = ResolveClipboardAdapter(binding);
-            return ModSettingsClipboardData.TryReadValue(binding, adapter, out value);
-        }
-
-        private static IStructuredModSettingsValueAdapter<TValue> ResolveClipboardAdapter<TValue>(
-            IModSettingsValueBinding<TValue> binding)
-        {
-            return binding is IStructuredModSettingsValueBinding<TValue> structured
-                ? structured.Adapter
-                : ModSettingsStructuredData.Json<TValue>();
-        }
-
-        private static Control CreateSection(ModSettingsUiContext context, ModSettingsSection section)
-        {
-            if (section.IsCollapsible)
-                return new ModSettingsCollapsibleSection(
-                    section.Title != null
-                        ? ModSettingsUiContext.Resolve(section.Title)
-                        : ModSettingsLocalization.Get("section.default", "Section"),
-                    section.Id,
-                    section.Description != null ? ModSettingsUiContext.Resolve(section.Description) : null,
-                    section.StartCollapsed,
-                    section.Entries.Select(entry => entry.CreateControl(context)).ToArray());
-            {
-                var container = new VBoxContainer
-                {
-                    Name = $"Section_{section.Id}",
-                    MouseFilter = Control.MouseFilterEnum.Ignore,
-                };
-                container.AddThemeConstantOverride("separation", 6);
-                if (section.Title != null)
-                    container.AddChild(CreateRefreshableSectionTitle(context,
-                        () => ModSettingsUiContext.Resolve(section.Title)));
-                if (section.Description != null)
-                    container.AddChild(CreateRefreshableDescriptionLabel(context,
-                        () => ModSettingsUiContext.Resolve(section.Description)));
-                foreach (var entry in section.Entries)
-                    container.AddChild(entry.CreateControl(context));
-                return container;
-            }
-        }
-
-        internal static MegaRichTextLabel CreateSectionTitle(string text)
-        {
-            var label = CreateHeaderLabel(text, 24, HorizontalAlignment.Left);
-            label.CustomMinimumSize = new(0f, 40f);
-            label.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
-            return label;
-        }
-
-        internal static MegaRichTextLabel CreateRefreshableSectionTitle(ModSettingsUiContext context,
-            Func<string> textProvider)
-        {
-            var label = CreateSectionTitle(textProvider());
-            context.RegisterRefresh(() => label.SetTextAutoSize(textProvider()));
-            return label;
-        }
-
-        private static MegaRichTextLabel CreateRefreshableHeaderLabel(ModSettingsUiContext context,
-            Func<string> textProvider,
-            int fontSize, HorizontalAlignment alignment)
-        {
-            var label = CreateHeaderLabel(textProvider(), fontSize, alignment);
-            context.RegisterRefresh(() => label.SetTextAutoSize(textProvider()));
-            return label;
-        }
-
-        private static MegaRichTextLabel CreateHeaderLabel(string text, int fontSize, HorizontalAlignment alignment)
-        {
-            var label = new MegaRichTextLabel
-            {
-                BbcodeEnabled = true,
-                AutoSizeEnabled = false,
-                ScrollActive = false,
-                FocusMode = Control.FocusModeEnum.None,
-                MouseFilter = Control.MouseFilterEnum.Ignore,
-                VerticalAlignment = VerticalAlignment.Center,
-                HorizontalAlignment = alignment,
-                Theme = ModSettingsUiResources.SettingsLineTheme,
-            };
-
-            label.AddThemeFontOverride("normal_font", ModSettingsUiResources.KreonRegular);
-            label.AddThemeFontOverride("bold_font", ModSettingsUiResources.KreonBold);
-            label.AddThemeFontSizeOverride("normal_font_size", fontSize);
-            label.AddThemeFontSizeOverride("bold_font_size", fontSize);
-            label.AddThemeFontSizeOverride("italics_font_size", fontSize);
-            label.AddThemeFontSizeOverride("bold_italics_font_size", fontSize);
-            label.AddThemeFontSizeOverride("mono_font_size", fontSize);
-            label.MinFontSize = Math.Min(fontSize, 18);
-            label.MaxFontSize = fontSize;
-            label.SetTextAutoSize(text);
-            return label;
-        }
-
-        internal static MegaRichTextLabel CreateInlineDescription(string text)
-        {
-            var label = CreateHeaderLabel(text, 16, HorizontalAlignment.Left);
-            label.CustomMinimumSize = new(0f, 24f);
-            label.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
-            label.Modulate = new(0.82f, 0.79f, 0.72f, 0.92f);
-            return label;
-        }
-
-        private static MegaRichTextLabel CreateDescriptionLabel(string text)
-        {
-            return CreateInlineDescription(text);
-        }
-
-        internal static MegaRichTextLabel CreateRefreshableDescriptionLabel(ModSettingsUiContext context,
-            Func<string> textProvider)
-        {
-            var label = CreateDescriptionLabel(textProvider());
-            context.RegisterRefresh(() =>
-            {
-                var text = textProvider();
-                label.SetTextAutoSize(text);
-                label.Visible = !string.IsNullOrWhiteSpace(text);
-            });
-            return label;
-        }
-
-        private static string SanitizeName(string text)
-        {
-            return string.Join("_", text.Split(Path.GetInvalidFileNameChars(), StringSplitOptions.RemoveEmptyEntries));
-        }
-
-        internal static StyleBoxFlat CreateSurfaceStyle()
-        {
-            return new()
-            {
-                BgColor = new(0.095f, 0.115f, 0.15f, 0.965f),
-                BorderColor = new(0.38f, 0.58f, 0.70f, 0.42f),
-                BorderWidthLeft = 1,
-                BorderWidthTop = 1,
-                BorderWidthRight = 1,
-                BorderWidthBottom = 1,
-                CornerRadiusTopLeft = 14,
-                CornerRadiusTopRight = 14,
-                CornerRadiusBottomRight = 14,
-                CornerRadiusBottomLeft = 14,
-                ShadowColor = new(0f, 0f, 0f, 0.18f),
-                ShadowSize = 4,
-                ContentMarginLeft = 16,
-                ContentMarginTop = 12,
-                ContentMarginRight = 16,
-                ContentMarginBottom = 12,
-            };
-        }
-
-        private static StyleBoxFlat CreateEntrySurfaceStyle()
-        {
-            return CreateSurfaceStyle();
-        }
-
-        internal static StyleBoxFlat CreateInsetSurfaceStyle()
-        {
-            return new()
-            {
-                BgColor = new(0.07f, 0.085f, 0.11f, 0.98f),
-                BorderColor = new(0.30f, 0.44f, 0.56f, 0.34f),
-                BorderWidthLeft = 1,
-                BorderWidthTop = 1,
-                BorderWidthRight = 1,
-                BorderWidthBottom = 1,
-                CornerRadiusTopLeft = 12,
-                CornerRadiusTopRight = 12,
-                CornerRadiusBottomRight = 12,
-                CornerRadiusBottomLeft = 12,
-                ContentMarginLeft = 14,
-                ContentMarginTop = 12,
-                ContentMarginRight = 14,
-                ContentMarginBottom = 12,
-            };
-        }
-
-        internal static StyleBoxFlat CreateListShellStyle()
-        {
-            return new()
-            {
-                BgColor = new(0.06f, 0.075f, 0.098f, 0.98f),
-                BorderColor = new(0.34f, 0.52f, 0.64f, 0.38f),
-                BorderWidthLeft = 1,
-                BorderWidthTop = 1,
-                BorderWidthRight = 1,
-                BorderWidthBottom = 1,
-                CornerRadiusTopLeft = 18,
-                CornerRadiusTopRight = 18,
-                CornerRadiusBottomRight = 18,
-                CornerRadiusBottomLeft = 18,
-                ShadowColor = new(0f, 0f, 0f, 0.22f),
-                ShadowSize = 6,
-                ContentMarginLeft = 18,
-                ContentMarginTop = 18,
-                ContentMarginRight = 18,
-                ContentMarginBottom = 18,
-            };
-        }
-
-        internal static StyleBoxFlat CreateListItemCardStyle(bool accent = false)
-        {
-            return new()
-            {
-                BgColor = accent
-                    ? new(0.115f, 0.16f, 0.205f, 0.985f)
-                    : new Color(0.09f, 0.11f, 0.145f, 0.975f),
-                BorderColor = accent
-                    ? new(0.52f, 0.77f, 0.90f, 0.70f)
-                    : new Color(0.33f, 0.50f, 0.62f, 0.34f),
-                BorderWidthLeft = 1,
-                BorderWidthTop = 1,
-                BorderWidthRight = 1,
-                BorderWidthBottom = 1,
-                CornerRadiusTopLeft = 16,
-                CornerRadiusTopRight = 16,
-                CornerRadiusBottomRight = 16,
-                CornerRadiusBottomLeft = 16,
-                ShadowColor = new(0f, 0f, 0f, 0.18f),
-                ShadowSize = 4,
-                ContentMarginLeft = 16,
-                ContentMarginTop = 16,
-                ContentMarginRight = 16,
-                ContentMarginBottom = 16,
-            };
-        }
-
-        internal static StyleBoxFlat CreateListEditorSurfaceStyle()
-        {
-            return new()
-            {
-                BgColor = new(0.055f, 0.068f, 0.09f, 0.985f),
-                BorderColor = new(0.30f, 0.46f, 0.58f, 0.42f),
-                BorderWidthLeft = 1,
-                BorderWidthTop = 1,
-                BorderWidthRight = 1,
-                BorderWidthBottom = 1,
-                CornerRadiusTopLeft = 16,
-                CornerRadiusTopRight = 16,
-                CornerRadiusBottomRight = 16,
-                CornerRadiusBottomLeft = 16,
-                ShadowColor = new(0f, 0f, 0f, 0.16f),
-                ShadowSize = 3,
-                ContentMarginLeft = 18,
-                ContentMarginTop = 16,
-                ContentMarginRight = 18,
-                ContentMarginBottom = 16,
-            };
-        }
-
-        internal static StyleBoxFlat CreatePillStyle(bool highlighted = false)
-        {
-            return new()
-            {
-                BgColor = highlighted
-                    ? new(0.17f, 0.28f, 0.34f, 0.98f)
-                    : new Color(0.12f, 0.16f, 0.21f, 0.96f),
-                BorderColor = highlighted
-                    ? new(0.60f, 0.82f, 0.92f, 0.78f)
-                    : new Color(0.38f, 0.54f, 0.66f, 0.40f),
-                BorderWidthLeft = 1,
-                BorderWidthTop = 1,
-                BorderWidthRight = 1,
-                BorderWidthBottom = 1,
-                CornerRadiusTopLeft = 999,
-                CornerRadiusTopRight = 999,
-                CornerRadiusBottomRight = 999,
-                CornerRadiusBottomLeft = 999,
-                ContentMarginLeft = 12,
-                ContentMarginTop = 6,
-                ContentMarginRight = 12,
-                ContentMarginBottom = 6,
-            };
-        }
-    }
-
-    internal static class ModSettingsUiResources
-    {
-        public static Theme SettingsLineTheme =>
-            PreloadManager.Cache.GetAsset<Theme>("res://themes/settings_screen_line_header.tres");
-
-        public static Font KreonRegular =>
-            PreloadManager.Cache.GetAsset<Font>("res://themes/kreon_regular_shared.tres");
-
-        public static Font KreonBold =>
-            PreloadManager.Cache.GetAsset<Font>("res://themes/kreon_bold_shared.tres");
-
-        public static Font KreonButton =>
-            PreloadManager.Cache.GetAsset<Font>("res://themes/kreon_bold_glyph_space_two.tres");
-
-        public static PackedScene SelectionReticleScene =>
-            PreloadManager.Cache.GetScene(SceneHelper.GetScenePath("ui/selection_reticle"));
-
-        public static PackedScene TickboxVisualScene =>
-            PreloadManager.Cache.GetScene(SceneHelper.GetScenePath("ui/tickbox"));
-
-        public static PackedScene SliderScene =>
-            PreloadManager.Cache.GetScene(SceneHelper.GetScenePath("ui/volume_slider"));
-
-        public static PackedScene ScrollbarScene =>
-            PreloadManager.Cache.GetScene(SceneHelper.GetScenePath("ui/scrollbar"));
-
-        public static Texture2D SettingsButtonTexture =>
-            PreloadManager.Cache.GetAsset<Texture2D>("res://images/ui/reward_screen/reward_skip_button.png");
-
-        public static Texture2D LeftArrowTexture =>
-            PreloadManager.Cache.GetAsset<Texture2D>(
-                "res://images/atlases/ui_atlas.sprites/settings_tiny_left_arrow.tres");
-
-        public static Texture2D RightArrowTexture =>
-            PreloadManager.Cache.GetAsset<Texture2D>("res://images/packed/common_ui/settings_tiny_right_arrow.png");
-
-        public static ShaderMaterial CreateToneMaterial(ModSettingsButtonTone tone)
-        {
-            return tone switch
-            {
-                ModSettingsButtonTone.Accent => MaterialUtils.CreateHsvShaderMaterial(0.82f, 1.4f, 0.8f),
-                ModSettingsButtonTone.Danger => MaterialUtils.CreateHsvShaderMaterial(0.45f, 1.5f, 0.8f),
-                _ => MaterialUtils.CreateHsvShaderMaterial(0.61f, 1.6f, 1.3f),
-            };
-        }
-
-        public static Color GetToneOutlineColor(ModSettingsButtonTone tone)
-        {
-            return tone switch
-            {
-                ModSettingsButtonTone.Accent => new(0.1274f, 0.26f, 0.14066f),
-                ModSettingsButtonTone.Danger => new(0.29f, 0.14703f, 0.1421f),
-                _ => new(0.2f, 0.1575f, 0.098f),
-            };
-        }
-    }
-
     internal sealed partial class ModSettingsToggleControl : Button
     {
         private readonly bool _initialValue;
@@ -1091,6 +120,7 @@ namespace STS2RitsuLib.Settings
 
     internal sealed partial class ModSettingsSliderControl : HBoxContainer
     {
+        private readonly float _bindingValueAtConstruct;
         private readonly Func<float, string>? _formatter;
         private readonly Action<float>? _onChanged;
         private HSlider? _slider;
@@ -1107,6 +137,7 @@ namespace STS2RitsuLib.Settings
         {
             _formatter = formatter;
             _onChanged = onChanged;
+            _bindingValueAtConstruct = initialValue;
 
             CustomMinimumSize = new(248f, 56f);
             SizeFlagsHorizontal = SizeFlags.ShrinkEnd;
@@ -1140,6 +171,7 @@ namespace STS2RitsuLib.Settings
             sliderPanel.AddThemeConstantOverride("margin_bottom", 16);
             AddChild(sliderPanel);
 
+            var normalizedInitial = NormalizeSliderValue(initialValue, minValue, maxValue, step);
             var slider = new HSlider
             {
                 Name = "Slider",
@@ -1151,7 +183,7 @@ namespace STS2RitsuLib.Settings
                 MinValue = minValue,
                 MaxValue = maxValue,
                 Step = step,
-                Value = initialValue,
+                Value = normalizedInitial,
             };
             slider.AddThemeStyleboxOverride("slider", CreateSliderStyle(false));
             slider.AddThemeStyleboxOverride("grabber_area", CreateSliderStyle(false));
@@ -1175,6 +207,8 @@ namespace STS2RitsuLib.Settings
             if (_valueEdit == null) return;
             _valueEdit.TextSubmitted += OnValueSubmitted;
             _valueEdit.FocusExited += OnValueFocusExited;
+
+            SyncBindingToCanonicalSliderValue(_bindingValueAtConstruct);
         }
 
         private void OnSliderValueChanged(double value)
@@ -1191,10 +225,36 @@ namespace STS2RitsuLib.Settings
             if (_slider == null)
                 return;
 
+            var min = (float)_slider.MinValue;
+            var max = (float)_slider.MaxValue;
+            var normalized = NormalizeSliderValue(value, min, max, (float)_slider.Step);
+
             _suppressCallbacks = true;
-            _slider.Value = value;
-            RefreshValueLabel((float)_slider.Value);
+            _slider.Value = normalized;
+            var actual = (float)_slider.Value;
+            RefreshValueLabel(actual);
             _suppressCallbacks = false;
+
+            if (!Mathf.IsEqualApprox(value, actual))
+                _onChanged?.Invoke(actual);
+        }
+
+        private static float NormalizeSliderValue(float value, float minValue, float maxValue, float step)
+        {
+            var v = Mathf.Clamp(value, minValue, maxValue);
+            if (step > 0f)
+                v = Mathf.Snapped(v, step);
+            return v;
+        }
+
+        private void SyncBindingToCanonicalSliderValue(float bindingClaimed)
+        {
+            if (_slider == null)
+                return;
+
+            var onSlider = (float)_slider.Value;
+            if (!Mathf.IsEqualApprox(bindingClaimed, onSlider))
+                _onChanged?.Invoke(onSlider);
         }
 
         private void RefreshValueLabel(float value)
@@ -1229,9 +289,8 @@ namespace STS2RitsuLib.Settings
                 return;
             }
 
-            value = Mathf.Clamp(value, (float)_slider.MinValue, (float)_slider.MaxValue);
-            if (_slider.Step > 0)
-                value = Mathf.Snapped(value, (float)_slider.Step);
+            value = NormalizeSliderValue(value, (float)_slider.MinValue, (float)_slider.MaxValue,
+                (float)_slider.Step);
             _slider.Value = value;
         }
 
@@ -1775,20 +834,24 @@ namespace STS2RitsuLib.Settings
                 return string.Empty;
 
             if (!IsModifierKey(keyEvent.Keycode) || parts.Count == 0)
-                parts.Add(GetRecordedKeyName(keyEvent.Keycode, distinguishModifierSides));
+                parts.Add(GetRecordedKeyName(keyEvent, distinguishModifierSides));
 
             if (!allowModifierCombos && IsModifierKey(keyEvent.Keycode))
-                return GetRecordedKeyName(keyEvent.Keycode, distinguishModifierSides);
+                return GetRecordedKeyName(keyEvent, distinguishModifierSides);
 
             return string.Join('+', parts);
         }
 
-        private static string GetRecordedKeyName(Key key, bool distinguishModifierSides)
+        /// <summary>
+        ///     Uses <see cref="InputEventKey.PhysicalKeycode" /> when <paramref name="distinguishModifierSides" /> is true
+        ///     so Left Ctrl / Right Shift etc. are distinguished; otherwise uses the logical <see cref="InputEventKey.Keycode" />.
+        /// </summary>
+        private static string GetRecordedKeyName(InputEventKey keyEvent, bool distinguishModifierSides)
         {
-            if (!distinguishModifierSides || !IsModifierKey(key))
-                return key.ToString();
-
-            return key.ToString();
+            var code = distinguishModifierSides ? keyEvent.PhysicalKeycode : keyEvent.Keycode;
+            if (code == Key.None)
+                code = keyEvent.Keycode;
+            return code.ToString();
         }
 
         private static bool IsModifierKey(Key key)
@@ -1796,28 +859,6 @@ namespace STS2RitsuLib.Settings
             return key is Key.Shift or Key.Ctrl or Key.Alt or Key.Meta;
         }
     }
-
-    internal sealed record ModSettingsMenuAction(string Label, Func<bool> IsEnabled, Action Action)
-    {
-        public ModSettingsMenuAction(string label, bool enabled, Action action)
-            : this(label, () => enabled, action)
-        {
-        }
-    }
-
-    public enum ModSettingsClipboardScope
-    {
-        Self = 0,
-        Subtree = 1,
-    }
-
-    internal sealed record ModSettingsClipboardEnvelope(
-        string Kind,
-        string TypeName,
-        string TargetSignature,
-        string SchemaSignature,
-        ModSettingsClipboardScope Scope,
-        string Payload);
 
     internal sealed partial class ModSettingsActionsButton : MenuButton
     {
@@ -1830,19 +871,21 @@ namespace STS2RitsuLib.Settings
         {
             _actions = actions;
             _afterAction = afterAction;
-            Text = ModSettingsLocalization.Get("button.actionsShort", "Actions");
             FocusMode = FocusModeEnum.All;
             MouseFilter = MouseFilterEnum.Stop;
-            CustomMinimumSize = new(120f, 56f);
+            Flat = false;
+            Text = ModSettingsLocalization.Get("button.actionsGlyph", "\u22ee");
+            TooltipText = ModSettingsLocalization.Get("button.actionsShort", "Actions");
+            CustomMinimumSize = new(44f, 40f);
             AddThemeFontOverride("font", ModSettingsUiResources.KreonBold);
-            AddThemeFontSizeOverride("font_size", 18);
-            AddThemeColorOverride("font_color", new(0.95f, 0.98f, 1f));
-            AddThemeColorOverride("font_hover_color", new(1f, 1f, 1f));
+            AddThemeFontSizeOverride("font_size", 17);
+            AddThemeColorOverride("font_color", new(0.86f, 0.92f, 0.97f));
+            AddThemeColorOverride("font_hover_color", new(0.98f, 1f, 1f));
             AddThemeColorOverride("font_pressed_color", new(1f, 1f, 1f));
-            AddThemeStyleboxOverride("normal", ModSettingsUiFactory.CreateSurfaceStyle());
-            AddThemeStyleboxOverride("hover", ModSettingsUiFactory.CreateSurfaceStyle());
-            AddThemeStyleboxOverride("pressed", ModSettingsUiFactory.CreateSurfaceStyle());
-            AddThemeStyleboxOverride("focus", ModSettingsUiFactory.CreateSurfaceStyle());
+            AddThemeStyleboxOverride("normal", ModSettingsUiFactory.CreateChromeActionsMenuStyle(false));
+            AddThemeStyleboxOverride("hover", ModSettingsUiFactory.CreateChromeActionsMenuStyle(true));
+            AddThemeStyleboxOverride("pressed", ModSettingsUiFactory.CreateChromeActionsMenuStyle(true));
+            AddThemeStyleboxOverride("focus", ModSettingsUiFactory.CreateChromeActionsMenuStyle(true));
         }
 
         public ModSettingsActionsButton()
@@ -1854,7 +897,7 @@ namespace STS2RitsuLib.Settings
         {
             var popup = GetPopup();
             _popup = popup;
-            RefreshPopupItems();
+            Callable.From(RefreshPopupItems).CallDeferred();
             popup.PopupHide += () => _preferredPopupPosition = null;
 
             popup.AboutToPopup += () =>
@@ -2119,7 +1162,6 @@ namespace STS2RitsuLib.Settings
 
     internal sealed partial class ModSettingsListControl<TItem> : VBoxContainer
     {
-        private readonly ModSettingsUiContext _context;
         private readonly string _dragToken = Guid.NewGuid().ToString("N");
         private readonly System.Collections.Generic.Dictionary<int, ModSettingsListDropSlot<TItem>> _dropSlots = [];
         private readonly ListModSettingsEntryDefinition<TItem> _entry;
@@ -2132,7 +1174,7 @@ namespace STS2RitsuLib.Settings
 
         public ModSettingsListControl(ModSettingsUiContext context, ListModSettingsEntryDefinition<TItem> entry)
         {
-            _context = context;
+            UiContext = context;
             _entry = entry;
 
             MouseFilter = MouseFilterEnum.Ignore;
@@ -2142,9 +1184,11 @@ namespace STS2RitsuLib.Settings
 
         public ModSettingsListControl()
         {
-            _context = null!;
+            UiContext = null!;
             _entry = null!;
         }
+
+        internal ModSettingsUiContext UiContext { get; }
 
         public override void _Notification(int what)
         {
@@ -2221,11 +1265,11 @@ namespace STS2RitsuLib.Settings
             textColumn.AddThemeConstantOverride("separation", 4);
             header.AddChild(textColumn);
 
-            textColumn.AddChild(ModSettingsUiFactory.CreateRefreshableSectionTitle(_context,
+            textColumn.AddChild(ModSettingsUiFactory.CreateRefreshableSectionTitle(UiContext,
                 () => ModSettingsUiContext.Resolve(_entry.Label)));
 
-            var descriptionLabel = ModSettingsUiFactory.CreateRefreshableDescriptionLabel(_context,
-                () => _context.ComposeBindingDescription(_entry.Description, _entry.Binding));
+            var descriptionLabel = ModSettingsUiFactory.CreateRefreshableDescriptionLabel(UiContext,
+                () => ModSettingsUiContext.ComposeBindingDescription(_entry.Description, _entry.Binding));
             textColumn.AddChild(descriptionLabel);
 
             var summary = new PanelContainer
@@ -2258,7 +1302,8 @@ namespace STS2RitsuLib.Settings
             };
             header.AddChild(addButton);
 
-            if (ModSettingsUiFactory.CreateEntryActionsButton(_context, _entry.Binding) is ModSettingsActionsButton actionsButton)
+            if (ModSettingsUiFactory.CreateEntryActionsButton(UiContext, _entry.Binding) is ModSettingsActionsButton
+                actionsButton)
             {
                 header.AddChild(actionsButton);
                 ModSettingsUiFactory.AttachContextMenuTargets(this, shell, actionsButton);
@@ -2315,13 +1360,13 @@ namespace STS2RitsuLib.Settings
             emptyState.AddChild(emptyLabel);
             _emptyState = emptyState;
 
-            _context.RegisterRefresh(RebuildRows);
+            ModSettingsUiFactory.RegisterRefreshWhenAlive(UiContext, this, RebuildRows);
             RebuildRows();
         }
 
         private void RebuildRows()
         {
-            if (_rows == null)
+            if (_rows == null || !IsInstanceValid(this))
                 return;
 
             ClearActiveDropSlot();
@@ -2347,7 +1392,7 @@ namespace STS2RitsuLib.Settings
         private Control CreateRow(int index, TItem item, int itemCount)
         {
             var itemContext = new ModSettingsListItemContext<TItem>(
-                _context,
+                UiContext,
                 CreateItemBinding(index),
                 index,
                 itemCount,
@@ -2357,7 +1402,7 @@ namespace STS2RitsuLib.Settings
                 index < itemCount - 1 ? () => Mutate(items => MoveItem(items, index, index + 1)) : null,
                 () => Mutate(items => DuplicateItem(items, index)),
                 () => Mutate(items => items.RemoveAt(index)),
-                _context.RequestRefresh);
+                UiContext.RequestRefresh);
 
             return new ModSettingsListItemCard<TItem>(
                 this,
@@ -2376,8 +1421,8 @@ namespace STS2RitsuLib.Settings
             var clone = CloneBindingValue(_entry.Binding.Read());
             mutate(clone);
             _entry.Binding.Write(clone);
-            _context.MarkDirty(_entry.Binding);
-            _context.RequestRefresh();
+            UiContext.MarkDirty(_entry.Binding);
+            UiContext.RequestRefresh();
         }
 
         private IModSettingsValueBinding<TItem> CreateItemBinding(int index)
@@ -2663,24 +1708,10 @@ namespace STS2RitsuLib.Settings
             };
             actions.AddThemeConstantOverride("separation", 8);
             header.AddChild(actions);
-            var actionsButton = new ModSettingsActionsButton([
-                new(ModSettingsLocalization.Get("button.moveUp", "Move up"), itemContext.CanMoveUp,
-                    itemContext.MoveUp),
-                new(ModSettingsLocalization.Get("button.moveDown", "Move down"), itemContext.CanMoveDown,
-                    itemContext.MoveDown),
-                new(ModSettingsLocalization.Get("button.duplicate", "Duplicate"),
-                    itemContext.SupportsStructuredClipboard,
-                    itemContext.Duplicate),
-                new(ModSettingsLocalization.Get("button.copySelf", "Copy self"),
-                    itemContext.SupportsStructuredClipboard,
-                    () => { itemContext.TryCopyToClipboard(); }),
-                new(ModSettingsLocalization.Get("button.copySubtree", "Copy with children"),
-                    itemContext.SupportsStructuredClipboard,
-                    () => { itemContext.TryCopyToClipboard(ModSettingsClipboardScope.Subtree); }),
-                new(ModSettingsLocalization.Get("button.paste", "Paste data"), () => itemContext.CanPasteFromClipboard(),
-                    () => { itemContext.TryPasteFromClipboard(); }),
-                new(ModSettingsLocalization.Get("button.remove", "Remove"), true, itemContext.Remove),
-            ], itemContext.RequestRefresh);
+            var actionsButton = new ModSettingsActionsButton(
+                ModSettingsUiFactory.BuildListItemMenuActions(owner.UiContext, itemContext),
+                itemContext.RequestRefresh);
+            actionsButton.SizeFlagsVertical = SizeFlags.ShrinkCenter;
             actions.AddChild(actionsButton);
             ModSettingsUiFactory.AttachContextMenuTargets(this, outer, actionsButton);
 
@@ -2892,6 +1923,7 @@ namespace STS2RitsuLib.Settings
     {
         private readonly Control[]? _contentControls;
         private readonly string? _description;
+        private readonly ModSettingsActionsButton? _headerActions;
         private readonly string? _sectionId;
         private readonly bool _startCollapsed;
         private readonly string? _title;
@@ -2900,13 +1932,14 @@ namespace STS2RitsuLib.Settings
         private ModSettingsCollapsibleHeaderButton? _toggle;
 
         public ModSettingsCollapsibleSection(string title, string? sectionId, string? description, bool startCollapsed,
-            Control[] contentControls)
+            Control[] contentControls, ModSettingsActionsButton? headerActions = null)
         {
             _title = title;
             _sectionId = sectionId;
             _description = description;
             _startCollapsed = startCollapsed;
             _contentControls = contentControls;
+            _headerActions = headerActions;
             MouseFilter = MouseFilterEnum.Ignore;
             AddThemeConstantOverride("separation", 6);
         }
@@ -2940,8 +1973,38 @@ namespace STS2RitsuLib.Settings
                 {
                     SizeFlagsHorizontal = SizeFlags.ExpandFill,
                 };
-            if (_toggle != null)
-                cardContent.AddChild(_toggle);
+
+            if (_toggle != null || _headerActions != null)
+            {
+                var headerRow = new HBoxContainer
+                {
+                    SizeFlagsHorizontal = SizeFlags.ExpandFill,
+                    MouseFilter = MouseFilterEnum.Ignore,
+                    Alignment = AlignmentMode.Center,
+                };
+                headerRow.AddThemeConstantOverride("separation", 8);
+                if (_toggle != null)
+                {
+                    _toggle.SizeFlagsHorizontal = SizeFlags.ExpandFill;
+                    headerRow.AddChild(_toggle);
+                }
+                else
+                {
+                    headerRow.AddChild(new Control
+                    {
+                        SizeFlagsHorizontal = SizeFlags.ExpandFill,
+                        MouseFilter = MouseFilterEnum.Ignore,
+                    });
+                }
+
+                if (_headerActions != null)
+                {
+                    _headerActions.SizeFlagsVertical = SizeFlags.ShrinkCenter;
+                    headerRow.AddChild(_headerActions);
+                }
+
+                cardContent.AddChild(headerRow);
+            }
 
             _content = new() { MouseFilter = MouseFilterEnum.Ignore };
             _content.AddThemeConstantOverride("separation", 6);

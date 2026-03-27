@@ -80,6 +80,8 @@ public class MyCardPool : TypeListCardPoolModel
 
 若旧工程仍**覆写** `CardTypes` 并在其中列举类型，会收到 **CS0618**，且若同时对同一池、同一张牌做了内容包注册，`AllCards` 仍会重复拼接；此时应迁移为「仅内容包注册」或仅为该覆写添加 `#pragma warning disable CS0618`。仅 `CardTypes`、不做卡牌注册时，通常拿不到 RitsuLib 固定 Entry 与归属，不建议。
 
+**生成式占位**：若尚未为每张牌编写 CLR 类型，但需要稳定 `ModelId` 让奖励、解锁等流程先跑通，可使用 `PlaceholderCard<TPool>(...)` 及遗物/药水对应 API。完整说明、示例与**必读警告**（存档 entry、联机 `ModelIdSerializationCache` Hash、无玩法效果等）见 [内容包与注册器](ContentPacksAndRegistries.md) 中的「生成式占位内容」一节。
+
 ---
 
 ## 4. 定义卡牌

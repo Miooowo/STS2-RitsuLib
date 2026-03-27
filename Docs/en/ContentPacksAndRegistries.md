@@ -8,6 +8,7 @@ It covers:
 - what `Apply()` actually does
 - when to use builder steps, manifests, or direct registry access
 - how fixed model identity and ModelDb integration relate to registration
+- generated placeholders for cards/relics/potions (API, ordering, and risks)
 
 ---
 
@@ -98,6 +99,7 @@ Less obvious helpers that are still useful:
 - `Keywords(IEnumerable<KeywordRegistrationEntry>)`
 - `Manifest(contentEntries, keywordEntries)`
 - `Custom(Action<ModContentPackContext>)`
+- generated placeholders: `PlaceholderCard<TPool>(...)`, `PlaceholderRelic<TPool>(...)`, `PlaceholderPotion<TPool>(...)` (see “Generated placeholder content” below)
 
 These are useful when you want registration declared as data instead of written inline in one long chain.
 
@@ -222,6 +224,69 @@ RitsuLibFramework.CreateContentPack("MyMod")
 ```
 
 This is useful when you want a declarative registration list or want to share registration bundles across modules.
+
+---
+
+## Generated placeholder content
+
+Use this when you want pool entries and a **stable public `ModelId.Entry`** (via `ModelPublicEntryOptions.FromStem` / `FromFullPublicEntry`) **without authoring one CLR type per card/relic/potion**—for example so reward tables, unlocks, or saves can reference IDs while content is still WIP. RitsuLib generates sealed subclasses at runtime with **Reflection.Emit**; gameplay is intentionally **no-op** (empty `OnPlay` / `OnUse`, etc.).
+
+### API summary
+
+| Use case | Entry point |
+|---|---|
+| Fluent pack | `PlaceholderCard<TPool>(stableEntryStem, PlaceholderCardDescriptor)`, `PlaceholderRelic<TPool>(...)`, `PlaceholderPotion<TPool>(...)` |
+| Registry | `ModContentRegistry.RegisterPlaceholderCard<TPool>(...)` (overloads accept `ModelPublicEntryOptions`, e.g. `FromFullPublicEntry`) |
+| Shape | `PlaceholderCardDescriptor`, `PlaceholderRelicDescriptor`, `PlaceholderPotionDescriptor` (structs with defaults) |
+| You already have a type | Two-type overload `PlaceholderCard<TPool, TCard>(stem)` only pins the entry for an existing class |
+
+`ModPlaceholderCardTemplate` / `ModPlaceholderRelicTemplate` / `ModPlaceholderPotionTemplate` are bases for emitted types; **mods normally should not subclass them** unless you have an advanced reason.
+
+### Example
+
+```csharp
+using MegaCrit.Sts2.Core.Entities.Cards;
+using STS2RitsuLib.Content;
+
+RitsuLibFramework.CreateContentPack("MyMod")
+    .Manifest(contentEntries, keywordEntries)
+    .Custom(ctx =>
+    {
+        ctx.Content.RegisterPlaceholderCard<MyCardPool>("wip_reward_attack",
+            new PlaceholderCardDescriptor(
+                BaseCost: 1,
+                Type: CardType.Attack,
+                Rarity: CardRarity.Common,
+                Target: TargetType.AnyEnemy));
+    })
+    .Apply();
+```
+
+For relics, `PlaceholderRelicDescriptor.MerchantCostOverride`: **`< 0` (default `-1`)** keeps rarity-based shop pricing; **`≥ 0`** overrides `MerchantCost`.
+
+### Ordering
+
+If you combine `Manifest(...)` with placeholders, register placeholders **after** prerequisites exist (typical pattern: `.Manifest(...)` then `.Custom(ctx => ...)` calling `RegisterPlaceholder*`), so pools and other types are already registered.
+
+---
+
+### Warnings (read carefully)
+
+> **Saves and entry stability**  
+> Once a placeholder id appears in saves or unlock data, its `ModelId.Entry` (from the stem or `FromFullPublicEntry`) is a long-lived contract. **Renaming stems or full-entry strings** can break old saves or unlock references. When shipping real content, keep the same entry or plan a migration.
+
+> **No gameplay effects**  
+> Placeholders do not implement damage, draw, relic triggers, etc. They prevent missing-model failures in some paths; **balance and UX can still be wrong** until you replace them with real types.
+
+> **Localization and assets**  
+> Placeholders still follow default loc-key and asset conventions from the entry. Missing translations or art may show raw keys or blanks—that is expected and does not mean registration failed.
+
+> **Multiplayer and `ModelIdSerializationCache.Hash`**  
+> Emitted types are **not** returned by the game’s vanilla `AllAbstractModelSubtypes` scan. RitsuLib injects dynamic-assembly models before `ModelDb.Init` and, after `ModelIdSerializationCache.Init`, **merges every model present in `ModelDb` into the net-ID tables and recomputes the hash** (same algorithm shape as vanilla).  
+> **Consequence**: different loaded mod sets → different hashes → clients **may not match** for multiplayer or replays. This is inherent to dynamic placeholders, not only a single-player concern.
+
+> **RitsuLib version coupling**  
+> Placeholder generation, `InjectDynamicRegisteredModels`, and serialization-cache integration follow the framework version you ship. Pin a compatible `STS2-RitsuLib` dependency and retest after upgrading the library.
 
 ---
 

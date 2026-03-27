@@ -80,6 +80,8 @@ public class MyCardPool : TypeListCardPoolModel
 
 Legacy mods that still **override** `CardTypes` with a type list will get **CS0618**, and pairing that with pack registration for the same pool + card still duplicates `AllCards`—migrate to pack-only registration or add `#pragma warning disable CS0618` for that override. Listing `CardTypes` only (no card registration) generally skips RitsuLib fixed entries and ownership—avoid it.
 
+**Generated placeholders**: If you need stable `ModelId` values before authoring each card type (rewards, unlocks, etc.), use `PlaceholderCard<TPool>(...)` and the relic/potion equivalents. Full API, examples, and **required warnings** (save entry stability, multiplayer `ModelIdSerializationCache` hash, no gameplay effects) are in the “Generated placeholder content” section of [Content Packs & Registries](ContentPacksAndRegistries.md).
+
 ---
 
 ## 4. Define a Card

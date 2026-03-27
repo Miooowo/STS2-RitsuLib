@@ -8,6 +8,7 @@
 - `Apply()` 到底做了什么
 - 什么时候该用链式构建器，什么时候该直接用注册器
 - 固定模型身份与 ModelDb 集成是怎样建立在注册之上的
+- 生成式占位（卡牌 / 遗物 / 药水）的 API、顺序与风险说明
 
 ---
 
@@ -98,6 +99,7 @@ RitsuLibFramework.CreateContentPack("MyMod")
 - `Keywords(IEnumerable<KeywordRegistrationEntry>)`
 - `Manifest(contentEntries, keywordEntries)`
 - `Custom(Action<ModContentPackContext>)`
+- 生成式占位：`PlaceholderCard<TPool>(...)`、`PlaceholderRelic<TPool>(...)`、`PlaceholderPotion<TPool>(...)`（详见下文「生成式占位内容」）
 
 如果你希望“注册声明本身也是数据”，这些入口会很好用。
 
@@ -134,7 +136,7 @@ timeline.RegisterEpoch<MyEpoch>();
 
 - 记录某个模型类型归属于哪个 Mod
 - 校验重复注册与冲突
-- 提供给 ModelDb 补丁使用的追加模型序列
+- 为 ModelDb 补丁与其它集成点提供数据：例如向 `AllCharacters`、Act、能力、球体、共享事件、Ancient、**共享卡池类型**等全局访问器追加已注册模型；卡牌/遗物/药水进入**具体池**则通过 `ModHelper.AddModelToPool` 在池展开 `AllCards` / `AllRelics` / `AllPotions` 时合并（与上述全局追加不是同一条实现路径）
 - 为已注册类型生成固定公开 `ModelId.Entry`
 
 这套归属跟踪很关键，因为它让 RitsuLib 可以安全回答这些问题：
@@ -171,7 +173,8 @@ timeline.RegisterEpoch<MyEpoch>();
 
 RitsuLib 通过对 ModelDb 及相关访问点打补丁来完成这件事，包括：
 
-- 追加已注册的角色、Act、能力、球体、事件、Ancient
+- 追加已注册的角色、Act、能力、球体、事件、Ancient，以及共享卡池等
+- 将已注册卡牌/遗物/药水等与**目标池**绑定（`ModHelper.AddModelToPool`，在对应池的 `All*` 枚举中与原版生成结果拼接）
 - 对已注册模型类型强制固定公开条目标识
 - 在缓存锁定前引导动态 Act 内容补丁
 
@@ -224,6 +227,69 @@ RitsuLibFramework.CreateContentPack("MyMod")
 
 ---
 
+## 生成式占位内容
+
+用于在**尚未为每张牌 / 每个遗物 / 每个药水编写独立 CLR 类型**时，仍能注册进池子并获得**稳定、可预测的公开 `ModelId.Entry`**（与 `ModelPublicEntryOptions.FromStem` / `FromFullPublicEntry` 一致），以便奖励表、解锁、存档引用等流程先跑通。占位模型由 RitsuLib 在运行时通过 **Reflection.Emit** 生成密封子类，逻辑上为**无效果**（卡牌 `OnPlay`、药水 `OnUse` 等为空操作）。
+
+### API 概要
+
+| 场景 | 推荐入口 |
+|---|---|
+| 链式内容包 | `PlaceholderCard<TPool>(stableEntryStem, PlaceholderCardDescriptor)`、`PlaceholderRelic<TPool>(...)`、`PlaceholderPotion<TPool>(...)` |
+| 直接注册器 | `ModContentRegistry.RegisterPlaceholderCard<TPool>(...)` 等；重载可传入 `ModelPublicEntryOptions`（例如 `FromFullPublicEntry`） |
+| 形状参数 | `PlaceholderCardDescriptor`、`PlaceholderRelicDescriptor`、`PlaceholderPotionDescriptor`（结构体，带默认值，按需覆盖费用、类型、稀有度、目标等） |
+| 仍自带 CLR 类型时 | 保留 `PlaceholderCard<TPool, TCard>(stem)` 双泛型重载：仅为已有类型固定 entry，不生成新类型 |
+
+框架内部的 `ModPlaceholderCardTemplate` / `ModPlaceholderRelicTemplate` / `ModPlaceholderPotionTemplate` 供生成类型继承；**一般不必在 Mod 里再继承它们**，除非你有特殊手写需求。
+
+### 示例
+
+```csharp
+using MegaCrit.Sts2.Core.Entities.Cards;
+using STS2RitsuLib.Content;
+
+RitsuLibFramework.CreateContentPack("MyMod")
+    .Manifest(contentEntries, keywordEntries)
+    .Custom(ctx =>
+    {
+        ctx.Content.RegisterPlaceholderCard<MyCardPool>("wip_reward_attack",
+            new PlaceholderCardDescriptor(
+                BaseCost: 1,
+                Type: CardType.Attack,
+                Rarity: CardRarity.Common,
+                Target: TargetType.AnyEnemy));
+    })
+    .Apply();
+```
+
+遗物描述体中的 `MerchantCostOverride`：为 **`< 0`（默认 `-1`）** 时表示沿用稀有度默认商人价；**`≥ 0`** 时覆盖 `MerchantCost`。
+
+### 与初始化顺序
+
+若同时使用 `Manifest(...)` 与占位注册，请把占位步骤放在**已具备池类型等前置注册之后**（常见写法是在链上 `.Manifest(...)` 之后接 `.Custom(ctx => ...)` 调用 `RegisterPlaceholder*`），避免依赖尚未注册的池或角色。
+
+---
+
+### 警告（请务必阅读）
+
+> **存档与 Entry 稳定性**  
+> 占位一旦进入存档或解锁数据，其 `ModelId.Entry`（由 stem 或 `FromFullPublicEntry` 决定）即成为长期契约。**改名 / 改 stem / 改 `FromFullPublicEntry` 字符串**可能导致旧档、旧解锁引用失效。正式内容落地时，要么长期保留同一 entry，要么做迁移/兼容策略。
+
+> **无玩法效果**  
+> 占位不会替你实现伤害、抽牌、遗物触发等。仅保证模型存在、池子能展开、部分 UI/流程不因缺模型而崩溃；**平衡与体验仍可能异常**，需尽快替换为实作类型。
+
+> **本地化与资源**  
+> 占位仍使用基于 entry 的默认本地化键与资源路径约定；若未提供对应翻译或贴图，界面可能出现键名或缺图，这属于预期现象，不等于框架未注册成功。
+
+> **联机与 `ModelIdSerializationCache.Hash`**  
+> 生成类型**不会**出现在游戏原生的 `AllAbstractModelSubtypes` 扫描结果中。RitsuLib 会在 `ModelDb.Init` 前注入动态程序集中的已注册模型，并在 `ModelIdSerializationCache.Init` 之后**把 `ModelDb` 中实际存在的模型一并并入联机序列化表并重算 Hash**。  
+> **后果**：加载的 Mod 组合不同 → Hash 不同 → 与未使用占位/未使用相同 Mod 列表的客户端**可能无法联机或回放一致**。这是使用动态占位时的固有风险，而非单机独有。
+
+> **依赖 RitsuLib 版本**  
+> 占位、`InjectDynamicRegisteredModels`、序列化缓存补丁等行为随 RitsuLib 演进；请为 Mod 声明合适的 `STS2-RitsuLib` 依赖版本，并在升级前置库后回归测试。
+
+---
+
 ## 推荐注册模式
 
 对大多数 Mod，建议这样组织：
@@ -232,6 +298,7 @@ RitsuLibFramework.CreateContentPack("MyMod")
 2. 在其中注册所有内容、关键词、时间线节点与解锁规则
 3. `Custom(...)` 保持小而显式
 4. 不要把注册拖到运行期 hook 再做
+5. 使用 `TypeListCardPoolModel` 时，用 `.Card<池, 牌>()` 或 `CardRegistrationEntry` 登记池内牌；**不要**覆写已过时的 `CardTypes`（基类已默认空序列，详见 [快速入门](GettingStarted.md)）
 
 如果 Mod 很大，可以保留一个顶层构建器，再从子模块喂注册条目对象或辅助方法进去。
 

@@ -11,7 +11,7 @@
         <NoWarn>CS0436</NoWarn>
         <IsPackable>true</IsPackable>
         <PackageId>STS2.RitsuLib</PackageId>
-        <Version>0.0.19</Version>
+        <Version>0.0.20</Version>
         <Authors>OLC</Authors>
         <Description>Shared framework library for Slay the Spire 2 mods.</Description>
         <PackageReadmeFile>README.md</PackageReadmeFile>
@@ -28,6 +28,7 @@
 
     <ItemGroup>
         <PackageReference Include="Krafs.Publicizer" Version="2.3.0" PrivateAssets="all"/>
+        <PackageReference Include="System.IO.Hashing" Version="9.0.0"/>
     </ItemGroup>
     <ItemGroup>
         <Publicize Include="sts2" IncludeCompilerGeneratedMembers="false" IncludeVirtualMembers="false"/>

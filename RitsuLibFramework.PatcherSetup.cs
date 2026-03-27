@@ -52,6 +52,7 @@ namespace STS2RitsuLib
             patcher.RegisterPatch<NMainMenuContinueRunMissingCharacterPatch>();
             patcher.RegisterPatch<NContinueRunInfoShowInfoModelNotFoundPatch>();
             patcher.RegisterPatch<NMultiplayerLoadGameScreenBeginRunMissingCharacterPatch>();
+            patcher.RegisterPatch<NMultiplayerTestCharacterPaginatorAllCharactersPatch>();
             patcher.RegisterPatch<NCustomRunLoadScreenBeginRunMissingCharacterPatch>();
             patcher.RegisterPatch<NDailyRunLoadScreenBeginRunMissingCharacterPatch>();
             patcher.RegisterPatch<LocTableGetLocStringCompatibilityPatch>();

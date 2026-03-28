@@ -9,20 +9,33 @@ using STS2RitsuLib.Patching.Models;
 
 namespace STS2RitsuLib.Settings.Patches
 {
+    /// <summary>
+    ///     Harmony patch that reuses one <see cref="RitsuModSettingsSubmenu" /> per
+    ///     <see cref="NMainMenuSubmenuStack" /> instance.
+    /// </summary>
     public class ModSettingsSubmenuPatch : IPatchMethod
     {
         private static readonly ConditionalWeakTable<NMainMenuSubmenuStack, RitsuModSettingsSubmenu> Submenus = new();
 
+        /// <inheritdoc />
         public static string PatchId => "ritsulib_mod_settings_submenu";
+
+        /// <inheritdoc />
         public static string Description => "Inject RitsuLib mod settings submenu into the main menu stack";
+
+        /// <inheritdoc />
         public static bool IsCritical => false;
 
+        /// <inheritdoc />
         public static ModPatchTarget[] GetTargets()
         {
             return [new(typeof(NMainMenuSubmenuStack), nameof(NMainMenuSubmenuStack.GetSubmenuType), [typeof(Type)])];
         }
 
         // ReSharper disable InconsistentNaming
+        /// <summary>
+        ///     Returns a cached <see cref="RitsuModSettingsSubmenu" /> for the stack when the requested type matches.
+        /// </summary>
         public static bool Prefix(NMainMenuSubmenuStack __instance, Type type, ref NSubmenu __result)
             // ReSharper restore InconsistentNaming
         {
@@ -46,13 +59,23 @@ namespace STS2RitsuLib.Settings.Patches
         }
     }
 
+    /// <summary>
+    ///     Injects the “Mod Settings (RitsuLib)” row into the vanilla settings screen and keeps general panel height in sync.
+    /// </summary>
     public class SettingsScreenModSettingsButtonPatch : IPatchMethod
     {
         private const string GeneralSettingsResizeHookMeta = "ritsulib_general_settings_content_resize_hook";
+
+        /// <inheritdoc />
         public static string PatchId => "ritsulib_mod_settings_button";
+
+        /// <inheritdoc />
         public static string Description => "Add RitsuLib mod settings entry point to the settings screen";
+
+        /// <inheritdoc />
         public static bool IsCritical => false;
 
+        /// <inheritdoc />
         public static ModPatchTarget[] GetTargets()
         {
             return
@@ -63,6 +86,9 @@ namespace STS2RitsuLib.Settings.Patches
         }
 
         // ReSharper disable once InconsistentNaming
+        /// <summary>
+        ///     Ensures the entry line exists, refreshes copy, and schedules panel height refresh when mod pages exist.
+        /// </summary>
         public static void Postfix(NSettingsScreen __instance)
         {
             if (!ModSettingsRegistry.HasPages)
@@ -93,18 +119,16 @@ namespace STS2RitsuLib.Settings.Patches
             var divider = ModSettingsUiFactory.CreateDivider();
             divider.Name = "RitsuLibModSettingsDivider";
 
-            var line = ModSettingsUiFactory.CreateModdingScreenButtonLine(OpenSubmenu);
+            var line = ModSettingsGameSettingsEntryLine.Create(OpenSubmenu);
 
             content.AddChild(divider);
             content.AddChild(line);
 
             var creditsDivider = content.GetNodeOrNull<Control>("CreditsDivider");
-            if (creditsDivider != null)
-            {
-                var targetIndex = creditsDivider.GetIndex();
-                content.MoveChild(divider, targetIndex);
-                content.MoveChild(line, targetIndex + 1);
-            }
+            if (creditsDivider == null) return line;
+            var targetIndex = creditsDivider.GetIndex();
+            content.MoveChild(divider, targetIndex);
+            content.MoveChild(line, targetIndex + 1);
 
             return line;
 
@@ -116,8 +140,8 @@ namespace STS2RitsuLib.Settings.Patches
 
         /// <summary>
         ///     Vanilla <see cref="NSettingsPanel" /> only recomputes height on ready and viewport resize; injected rows
-        ///     (this mod and others) never trigger <c>RefreshSize</c>. Hooks <see cref="VBoxContainer.ChildEnteredTree" /> so
-        ///     we recalculate after layout and whenever the list of direct children changes.
+        ///     (this mod and others) never trigger <c>RefreshSize</c>. Hooks <c>ChildEnteredTree</c> on the content
+        ///     <see cref="VBoxContainer" /> so we recalculate after layout and whenever direct children change.
         /// </summary>
         private static void EnsureGeneralSettingsContentTracksChildAdds(VBoxContainer content)
         {

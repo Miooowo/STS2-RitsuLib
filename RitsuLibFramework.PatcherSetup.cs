@@ -5,11 +5,11 @@ using STS2RitsuLib.Interop.Patches;
 using STS2RitsuLib.Lifecycle.Patches;
 using STS2RitsuLib.Localization.Patches;
 using STS2RitsuLib.Patching.Core;
+using STS2RitsuLib.Relics.Patches;
 using STS2RitsuLib.Scaffolding.Characters.Patches;
 using STS2RitsuLib.Scaffolding.Content.Patches;
 using STS2RitsuLib.Settings.Patches;
 using STS2RitsuLib.Unlocks.Patches;
-using STS2RitsuLib.Relics.Patches;
 using STS2RitsuLib.Utils.Persistence.Patches;
 
 namespace STS2RitsuLib
@@ -132,6 +132,16 @@ namespace STS2RitsuLib
             patcher.RegisterPatch<ActBackgroundScenePathPatch>();
             patcher.RegisterPatch<ActRestSiteBackgroundPathPatch>();
             patcher.RegisterPatch<ActMapBackgroundPathPatch>();
+
+            patcher.RegisterPatch<EventLayoutScenePatch>();
+            patcher.RegisterPatch<EventInitialPortraitPatch>();
+            patcher.RegisterPatch<EventBackgroundScenePatch>();
+            patcher.RegisterPatch<EventHasVfxPatch>();
+            patcher.RegisterPatch<EventCreateVfxPatch>();
+            patcher.RegisterPatch<EventGetAssetPathsPatch>();
+            patcher.RegisterPatch<AncientMapIconTexturePatch>();
+            patcher.RegisterPatch<AncientRunHistoryIconTexturePatch>();
+            patcher.RegisterPatch<AncientMapNodeAssetPathsPatch>();
             RegisterFrameworkPatcher(FrameworkPatcherArea.ContentAssets, patcher);
         }
 

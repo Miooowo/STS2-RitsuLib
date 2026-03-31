@@ -143,6 +143,44 @@ namespace STS2RitsuLib.Scaffolding.Content
     }
 
     /// <summary>
+    ///     Optional event layout scene, portrait, background scene, and VFX scene paths (vanilla <c>EventModel</c> pipeline).
+    /// </summary>
+    /// <param name="LayoutScenePath">Packed scene for the event layout root (<c>CreateScene</c>).</param>
+    /// <param name="InitialPortraitPath">Texture path for the initial portrait (<c>CreateInitialPortrait</c>).</param>
+    /// <param name="BackgroundScenePath">Packed scene path for the background (<c>CreateBackgroundScene</c>).</param>
+    /// <param name="VfxScenePath">Packed scene path for optional event VFX (<c>CreateVfx</c>).</param>
+    public sealed record EventAssetProfile(
+        string? LayoutScenePath = null,
+        string? InitialPortraitPath = null,
+        string? BackgroundScenePath = null,
+        string? VfxScenePath = null)
+    {
+        /// <summary>
+        ///     Default empty profile (no custom paths).
+        /// </summary>
+        public static EventAssetProfile Empty { get; } = new();
+    }
+
+    /// <summary>
+    ///     Optional ancient map node and run-history icon paths (vanilla <c>AncientEventModel</c> presentation).
+    /// </summary>
+    /// <param name="MapIconPath">Compressed texture for map node icon.</param>
+    /// <param name="MapIconOutlinePath">Compressed texture for map node outline.</param>
+    /// <param name="RunHistoryIconPath">Run history main icon texture.</param>
+    /// <param name="RunHistoryIconOutlinePath">Run history outline texture.</param>
+    public sealed record AncientEventPresentationAssetProfile(
+        string? MapIconPath = null,
+        string? MapIconOutlinePath = null,
+        string? RunHistoryIconPath = null,
+        string? RunHistoryIconOutlinePath = null)
+    {
+        /// <summary>
+        ///     Default empty profile (no custom paths).
+        /// </summary>
+        public static AncientEventPresentationAssetProfile Empty { get; } = new();
+    }
+
+    /// <summary>
     ///     Factory methods that build vanilla-style default asset paths from pool/card/relic entry names.
     /// </summary>
     public static class ContentAssetProfiles
@@ -256,6 +294,44 @@ namespace STS2RitsuLib.Scaffolding.Content
                 ImageHelper.GetImagePath($"packed/map/map_bgs/{normalized}/map_middle_{normalized}.png"),
                 ImageHelper.GetImagePath($"packed/map/map_bgs/{normalized}/map_bottom_{normalized}.png"),
                 $"res://animations/backgrounds/treasure_room/chest_room_act_{normalized}_skel_data.tres");
+        }
+
+        /// <summary>
+        ///     Builds default event asset paths for <paramref name="eventEntry" /> (default / combat style events).
+        /// </summary>
+        public static EventAssetProfile Event(string eventEntry)
+        {
+            ArgumentException.ThrowIfNullOrWhiteSpace(eventEntry);
+
+            var normalized = Normalize(eventEntry);
+            return new(
+                InitialPortraitPath: ImageHelper.GetImagePath($"events/{normalized}.png"),
+                BackgroundScenePath: SceneHelper.GetScenePath($"events/background_scenes/{normalized}"),
+                VfxScenePath: SceneHelper.GetScenePath($"vfx/events/{normalized}_vfx"));
+        }
+
+        /// <summary>
+        ///     Builds the vanilla custom-layout scene path for <paramref name="eventEntry" /> (custom event layout type).
+        /// </summary>
+        public static string EventCustomLayoutScenePath(string eventEntry)
+        {
+            ArgumentException.ThrowIfNullOrWhiteSpace(eventEntry);
+            return SceneHelper.GetScenePath($"events/custom/{Normalize(eventEntry)}");
+        }
+
+        /// <summary>
+        ///     Builds default ancient presentation paths for <paramref name="ancientEntry" />.
+        /// </summary>
+        public static AncientEventPresentationAssetProfile AncientPresentation(string ancientEntry)
+        {
+            ArgumentException.ThrowIfNullOrWhiteSpace(ancientEntry);
+
+            var normalized = Normalize(ancientEntry);
+            return new(
+                ImageHelper.GetImagePath($"packed/map/ancients/ancient_node_{normalized}.png"),
+                ImageHelper.GetImagePath($"packed/map/ancients/ancient_node_{normalized}_outline.png"),
+                ImageHelper.GetImagePath($"ui/run_history/{normalized}.png"),
+                ImageHelper.GetImagePath($"ui/run_history/{normalized}_outline.png"));
         }
 
         private static string Normalize(string value)

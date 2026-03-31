@@ -46,8 +46,7 @@ public class MyStory : ModStoryTemplate
 // .Story<MyStory>()
 
 // Or IModContentPackEntry list (same idea as card manifest entries):
-// new StoryEpochPackEntry<MyStory, MyCharacterEpoch>(),
-// new StoryEpochPackEntry<MyStory, MyCardEpoch>(),
+// new TimelineColumnPackEntry<MyStory>(c => c.Epoch<MyCharacterEpoch>()...),
 // new StoryPackEntry<MyStory>(),
 ```
 
@@ -140,6 +139,17 @@ RitsuLib applies the gate across multiple entry points:
 - Events generated for acts
 
 This is not UI-only filtering; it changes what the game can actually offer.
+
+### Epoch progress vs. timeline reveal
+
+Vanilla `UnlockState` built from save progress mainly reflects epochs that have reached **`EpochState.Revealed`** (visible on the timeline) in **`UnlockedEpochs`**. **`SaveManager.ObtainEpoch`** can set **`Obtained`** / **`ObtainedNoSlot`** *before* the timeline slot is revealed.
+
+**`ModUnlockRegistry.IsUnlocked`** (used when applying **`RequireEpoch`** gating) treats the requirement as satisfied if **either**:
+
+- the epoch id is in **`unlockState.UnlockedEpochs`**, or  
+- **`SaveManager.Instance.Progress.IsEpochObtained(epochId)`** is true.
+
+So pool / character / event gating lines up with mod rules that call **`ObtainEpoch`**, not only with vanilla timeline reveal timing.
 
 ---
 
@@ -234,6 +244,7 @@ RitsuLibFramework.CreateContentPack("MyMod")
 - Using `RequireEpoch` without any rule that can actually unlock that epoch
 - Stacking many overlapping rules for the same epoch without a clear design
 - Assuming vanilla counted progression works for mod characters without registering RitsuLib unlock rules
+- Leaving **`UnlocksAfterRunAsType`** at the default on a mod character while **`unlockText`** uses **`{Prerequisite}`** — the character-select hover then shows the generic locked title (often **`???`**). Set **`UnlocksAfterRunAsType`** to the same prerequisite character type as in **`UnlockEpochAfterWinAs<TCharacter, TEpoch>`** / **`UnlockEpochAfterRunAs<…>`** (see [Character & Unlock Templates](CharacterAndUnlockScaffolding.md))
 
 ---
 

@@ -5,6 +5,7 @@ using MegaCrit.Sts2.Core.Saves;
 using MegaCrit.Sts2.Core.Saves.Runs;
 using MegaCrit.Sts2.Core.Timeline;
 using MegaCrit.Sts2.Core.Unlocks;
+using STS2RitsuLib.Content;
 using STS2RitsuLib.Diagnostics;
 
 namespace STS2RitsuLib.Unlocks
@@ -27,6 +28,9 @@ namespace STS2RitsuLib.Unlocks
         private static readonly Dictionary<ModelId, string> AscensionOneEpochsByCharacterId = [];
         private static readonly Dictionary<ModelId, string> AscensionRevealEpochsByCharacterId = [];
         private static readonly Dictionary<ModelId, string> PostRunCharacterUnlockEpochsByCharacterId = [];
+
+        private static readonly HashSet<string> ModIdsIgnoringEpochRequirements =
+            new(StringComparer.OrdinalIgnoreCase);
 
         private string? _freezeReason;
 
@@ -60,6 +64,37 @@ namespace STS2RitsuLib.Unlocks
                 registry = new(modId);
                 Registries[modId] = registry;
                 return registry;
+            }
+        }
+
+        /// <summary>
+        ///     When <paramref name="ignored" /> is true, models registered by <paramref name="modId" /> skip
+        ///     <see cref="RequireEpoch" /> gating at runtime (cards/relics/characters appear as if every epoch were met).
+        ///     Ascension reveal rules tied to that character still consult this bypass via patch integration.
+        /// </summary>
+        public static void SetEpochRequirementsIgnoredForMod(string modId, bool ignored = true)
+        {
+            ArgumentException.ThrowIfNullOrWhiteSpace(modId);
+
+            lock (SyncRoot)
+            {
+                if (ignored)
+                    ModIdsIgnoringEpochRequirements.Add(modId);
+                else
+                    ModIdsIgnoringEpochRequirements.Remove(modId);
+            }
+        }
+
+        internal static bool IsEpochRequirementIgnoredForModelType(Type modelType)
+        {
+            ArgumentNullException.ThrowIfNull(modelType);
+
+            if (!ModContentRegistry.TryGetOwnerModId(modelType, out var owner))
+                return false;
+
+            lock (SyncRoot)
+            {
+                return ModIdsIgnoringEpochRequirements.Contains(owner);
             }
         }
 
@@ -317,13 +352,31 @@ namespace STS2RitsuLib.Unlocks
             }
         }
 
+        /// <summary>
+        ///     Whether <paramref name="model" /> passes epoch gating for <paramref name="unlockState" />.
+        ///     Vanilla <see cref="UnlockState" /> built from progress only lists <see cref="EpochState.Revealed" /> epochs in
+        ///     <c>UnlockedEpochs</c>, while <see cref="SaveManager.ObtainEpoch" /> sets <see cref="EpochState.Obtained" /> /
+        ///     <see cref="EpochState.ObtainedNoSlot" /> until the timeline reveals the slot. Mod unlock rules call
+        ///     <c>ObtainEpoch</c>, so we also treat <see cref="ProgressState.IsEpochObtained" /> as satisfying
+        ///     <see cref="RequireEpoch(Type,string)" />.
+        /// </summary>
         internal static bool IsUnlocked(AbstractModel model, UnlockState unlockState)
         {
             lock (SyncRoot)
             {
-                return !RequiredEpochsByModelId.TryGetValue(model.Id, out var epochId) ||
-                       unlockState.ToSerializable().UnlockedEpochs.Contains(epochId) ||
-                       SaveManager.Instance.IsEpochRevealed(epochId);
+                if (!RequiredEpochsByModelId.TryGetValue(model.Id, out var epochId))
+                    return true;
+
+                var modelType = model.GetType();
+                if (ModContentRegistry.TryGetOwnerModId(modelType, out var modOwner) &&
+                    ModIdsIgnoringEpochRequirements.Contains(modOwner))
+                    return true;
+
+                if (unlockState.ToSerializable().UnlockedEpochs.Contains(epochId))
+                    return true;
+
+                var save = SaveManager.Instance;
+                return save != null && save.Progress.IsEpochObtained(epochId);
             }
         }
 

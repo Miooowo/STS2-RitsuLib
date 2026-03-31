@@ -7,13 +7,17 @@ namespace STS2RitsuLib.Scaffolding.Cards.HandGlow
     /// </summary>
     public static class ModCardHandGlowCombine
     {
-        /// <summary>Logical OR of any non-null predicates.</summary>
+        /// <summary>
+        ///     Logical OR of any non-null predicates.
+        /// </summary>
         public static Func<CardModel, bool> Or(params Func<CardModel, bool>?[] parts)
         {
             return card => { return parts.OfType<Func<CardModel, bool>>().Any(p => p(card)); };
         }
 
-        /// <summary>Logical AND of any non-null predicates; if all parts are null, returns <c>_ => true</c>.</summary>
+        /// <summary>
+        ///     Logical AND of any non-null predicates; if all parts are null, returns <c>_ => true</c>.
+        /// </summary>
         public static Func<CardModel, bool> And(params Func<CardModel, bool>?[] parts)
         {
             var filtered = parts.Where(static p => p != null).Cast<Func<CardModel, bool>>().ToArray();

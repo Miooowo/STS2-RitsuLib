@@ -1,12 +1,20 @@
 using MegaCrit.Sts2.Core.Models;
 using MegaCrit.Sts2.Core.Nodes.Screens.Timeline;
 using MegaCrit.Sts2.Core.Timeline;
+using STS2RitsuLib.Scaffolding.Content;
 
 namespace STS2RitsuLib.Timeline.Scaffolding
 {
     /// <summary>
     ///     <see cref="EpochModel" /> base that unlocks potions from declared CLR types and optional timeline expansions.
     /// </summary>
+    /// <remarks>
+    ///     Pool visibility still depends on <see cref="Unlocks.ModUnlockRegistry.RequireEpoch(Type,string)" /> for each
+    ///     potion type. Register those bindings from a pack using <see cref="TimelineColumnPackEntry{TStory}" /> with
+    ///     <c>EpochSlotBuilder&lt;TEpoch&gt;</c> callbacks (<c>RequireAllPotionsInPool&lt;TPool&gt;()</c>,
+    ///     <c>Potions(IReadOnlyList&lt;Type&gt;)</c>), or enqueue equivalent <c>RequireEpoch</c> steps from
+    ///     <see cref="ModContentPackBuilder" />.
+    /// </remarks>
     public abstract class PotionUnlockEpochTemplate : ModEpochTemplate
     {
         /// <summary>

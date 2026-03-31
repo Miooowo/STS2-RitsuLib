@@ -41,7 +41,7 @@ public class MyStory : ModStoryTemplate
 }
 
 // 流式: .StoryEpoch<MyStory, MyCharacterEpoch>() … .Story<MyStory>()
-// 或 IModContentPackEntry: StoryEpochPackEntry / StoryPackEntry
+// 或 IModContentPackEntry: TimelineColumnPackEntry / StoryPackEntry
 ```
 
 `ModStoryTemplate` 的职责：
@@ -133,6 +133,17 @@ RitsuLib 将门槛应用到多个访问入口：
 - Act 生成出来的事件列表
 
 这不是单纯 UI 过滤，而是真正影响游戏可提供内容的规则。
+
+### 纪元进度与时间线「揭示」
+
+从存档生成的原版 **`UnlockState`** 里，**`UnlockedEpochs`** 主要反映已进入 **`EpochState.Revealed`**（时间线栏位已显示）的纪元。而 **`SaveManager.ObtainEpoch`** 可能先把纪元标成 **`Obtained`** / **`ObtainedNoSlot`**，时间线槽位尚未揭示。
+
+应用 **`RequireEpoch`** 门槛时，**`ModUnlockRegistry.IsUnlocked`** 在以下**任一**成立时即视为已满足：
+
+- 该纪元 id 出现在 **`unlockState.UnlockedEpochs`** 中，或  
+- **`SaveManager.Instance.Progress.IsEpochObtained(epochId)`** 为真。
+
+这样，牌池 / 角色 / 事件等门槛会与通过 Mod 规则调用 **`ObtainEpoch`** 的进度一致，而不必等到原版时间线 UI 完全跟上。
 
 ---
 
@@ -227,6 +238,7 @@ RitsuLibFramework.CreateContentPack("MyMod")
 - 给内容设置了 `RequireEpoch`，却没有任何规则能真正解锁该纪元
 - 对同一个纪元叠很多重叠解锁规则，却没有明确设计理由
 - 误以为原版累计进度逻辑会自动兼容 Mod 角色，而没有注册 RitsuLib 解锁规则
+- Mod 角色的 **`unlockText`** 里用了 **`{Prerequisite}`**，却未覆盖 **`UnlocksAfterRunAsType`**（默认为 `null`）——选人界面悬停说明里的前置名会变成通用锁定标题（常显示为 **`???`**）。应将其设为与 **`UnlockEpochAfterWinAs<TCharacter, TEpoch>`** / **`UnlockEpochAfterRunAs<…>`** 中 **`TCharacter`** 一致的前置角色类型（详见 [角色与解锁模板](CharacterAndUnlockScaffolding.md)）
 
 ---
 

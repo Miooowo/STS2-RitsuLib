@@ -129,11 +129,22 @@ public class MyCharacter : ModCharacterTemplate<MyCardPool, MyRelicPool, MyPotio
 
 如果你更想继承 `silent`、`defect` 等角色的商人 / 休息点 / 小地图 / 默认音效风格，可以改写 `PlaceholderCharacterId`。若你想关闭这层兜底，可返回 `null`。
 
+### 选人界面解锁说明（`{Prerequisite}`）
+
+本地化 **`unlockText`** 可使用 **`{Prerequisite}`** 占位符。原版在 **`CharacterModel.GetUnlockText()`** 里根据 **`UnlocksAfterRunAs`** 填充；在 **`ModCharacterTemplate`** 上通过 **`UnlocksAfterRunAsType`** 指定前置角色的 CLR 类型。
+
+- 若 **`UnlocksAfterRunAs`** 为 **`null`**（模板默认），游戏会用通用锁定标题（**`LOCKED.title`**，界面上常显示为 **`???`**）。
+- 若已设置，则当前 **`UnlockState.Characters`** 里**已包含**该前置角色时，用其 **`Title`**；否则仍回退到 **`LOCKED.title`**。
+
+请把 **`UnlocksAfterRunAsType`** 与 **`UnlockEpochAfterWinAs<TCharacter, TEpoch>`** / **`UnlockEpochAfterRunAs<TCharacter, TEpoch>`** 等规则里的 **`TCharacter`** 对齐，这样悬停说明与真实解锁条件一致。
+
+**说明：** 仅设置 **`UnlocksAfterRunAsType` 不会实现解锁**，权威逻辑仍在 **`ModUnlockRegistry`** 与纪元进度中。
+
 ---
 
 ## 故事模板
 
-继承 `ModStoryTemplate` 提供故事标识（`StoryKey` → slug）。纪元顺序在注册阶段用 `RegisterStoryEpoch` / `StoryEpochPackEntry` / `.StoryEpoch<,>()` 绑定，见 `TimelineAndUnlocks.md`。
+继承 `ModStoryTemplate` 提供故事标识（`StoryKey` → slug）。纪元顺序在注册阶段用 `RegisterStoryEpoch` / `TimelineColumnPackEntry` / `.StoryEpoch<,>()` 绑定，见 `TimelineAndUnlocks.md`。
 
 ```csharp
 public class MyStory : ModStoryTemplate

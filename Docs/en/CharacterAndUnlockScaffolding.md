@@ -129,11 +129,22 @@ public class MyCharacter : ModCharacterTemplate<MyCardPool, MyRelicPool, MyPotio
 
 Override `PlaceholderCharacterId` with another base character such as `silent` or `defect` if you want their merchant / rest-site / map / default SFX alignment. Return `null` to disable this fallback.
 
+### Character-select unlock text (`{Prerequisite}`)
+
+Localized **`unlockText`** may use the **`{Prerequisite}`** token. Vanilla fills it in **`CharacterModel.GetUnlockText()`** from **`UnlocksAfterRunAs`** (on **`ModCharacterTemplate`**, supply the type via **`UnlocksAfterRunAsType`**):
+
+- If **`UnlocksAfterRunAs`** is **`null`** (the template default), the game substitutes the generic locked title (**`LOCKED.title`**, often shown as **`???`**).
+- If set, the game uses the prerequisite character’s **`Title`** when that character is present in the current **`UnlockState.Characters`**; otherwise it still falls back to **`LOCKED.title`**.
+
+Override **`UnlocksAfterRunAsType`** so it matches the same character type you pass to **`UnlockEpochAfterWinAs<TCharacter, TEpoch>`** / **`UnlockEpochAfterRunAs<TCharacter, TEpoch>`** (or equivalent). That keeps the hover text consistent with the real unlock rule.
+
+**`UnlocksAfterRunAsType` does not perform the unlock** — **`ModUnlockRegistry`** rules and epoch progression remain authoritative.
+
 ---
 
 ## Story Template
 
-Inherit `ModStoryTemplate` for the story id (`StoryKey` → slug). Bind epochs in registration order via `RegisterStoryEpoch<TStory, TEpoch>()`, `StoryEpochPackEntry<,>`, or `.StoryEpoch<,>()` — see `TimelineAndUnlocks.md`.
+Inherit `ModStoryTemplate` for the story id (`StoryKey` → slug). Bind epochs in registration order via `RegisterStoryEpoch<TStory, TEpoch>()`, `TimelineColumnPackEntry<,>`, or `.StoryEpoch<,>()` — see `TimelineAndUnlocks.md`.
 
 ```csharp
 public class MyStory : ModStoryTemplate

@@ -218,7 +218,10 @@ namespace STS2RitsuLib.Scaffolding.Characters
         protected virtual IEnumerable<Type> StartingPotionTypes => [];
 
         /// <summary>
-        ///     When non-null, this character remains locked until the player completes a run as that character type.
+        ///     Optional prerequisite character type for vanilla <see cref="CharacterModel.GetUnlockText" /> (the
+        ///     <c>{Prerequisite}</c> placeholder). Does not drive mod unlock logic — align with
+        ///     <see cref="Unlocks.ModUnlockRegistry" /> rules (e.g. the same <c>TCharacter</c> in
+        ///     <c>UnlockEpochAfterWinAs&lt;TCharacter, TEpoch&gt;</c>).
         /// </summary>
         protected virtual Type? UnlocksAfterRunAsType => null;
 

@@ -30,6 +30,15 @@ namespace STS2RitsuLib.Timeline.Scaffolding
         /// </summary>
         protected virtual IEnumerable<Type> ExpansionEpochTypes => [];
 
+        /// <summary>
+        ///     Same as <see cref="CardTypes" /> for batch <see cref="Unlocks.ModUnlockRegistry.RequireEpoch(Type,string)" />
+        ///     registration from a content-pack manifest.
+        /// </summary>
+        public IEnumerable<Type> EnumerateUnlockCardTypes()
+        {
+            return CardTypes;
+        }
+
         /// <inheritdoc />
         public override EpochModel[] GetTimelineExpansion()
         {

@@ -7,7 +7,7 @@ namespace STS2RitsuLib.Timeline.Scaffolding
     /// <summary>
     ///     Base <see cref="StoryModel" /> that derives its id from <see cref="StoryKey" />. Epoch order comes from
     ///     <see cref="ModTimelineRegistry.RegisterStoryEpoch{TStory, TEpoch}" /> (or
-    ///     <see cref="StoryEpochPackEntry{TStory,TEpoch}" />),
+    ///     <see cref="TimelineColumnPackEntry{TStory}" />),
     ///     not from an overridden type list.
     /// </summary>
     public abstract class ModStoryTemplate : StoryModel

@@ -1,20 +1,111 @@
 using MegaCrit.Sts2.Core.Models;
 using MegaCrit.Sts2.Core.Timeline;
+using STS2RitsuLib.Content;
+using STS2RitsuLib.Timeline;
+using STS2RitsuLib.Timeline.Scaffolding;
 using STS2RitsuLib.Unlocks;
 
 namespace STS2RitsuLib.Scaffolding.Content
 {
-    /// <summary>
-    ///     Registers <typeparamref name="TEpoch" /> and appends it to <typeparamref name="TStory" />'s ordered column.
-    /// </summary>
-    public sealed class StoryEpochPackEntry<TStory, TEpoch> : IModContentPackEntry
-        where TStory : StoryModel, new()
-        where TEpoch : EpochModel, new()
+    internal static class ModEpochGatedContentPackHelper
     {
-        /// <inheritdoc />
-        public void Apply(ModContentPackContext context)
+        internal static void ApplyExplicitTypes<TEpoch>(ModContentPackContext context, IReadOnlyList<Type> cardTypes,
+            IReadOnlyList<Type> relicTypes) where TEpoch : EpochModel, new()
         {
-            context.Timeline.RegisterStoryEpoch<TStory, TEpoch>();
+            var cards = cardTypes ?? Array.Empty<Type>();
+            var relics = relicTypes ?? Array.Empty<Type>();
+            if (cards.Count == 0 && relics.Count == 0)
+                throw new ArgumentException(
+                    $"Epoch gated content for '{typeof(TEpoch).Name}' needs at least one card or relic type.");
+
+            var epochId = new TEpoch().Id;
+            ModEpochGatedContentRegistry.Register(context.ModId, epochId, cards, relics);
+            foreach (var t in cards)
+                context.Unlocks.RequireEpoch(t, epochId);
+            foreach (var t in relics)
+                context.Unlocks.RequireEpoch(t, epochId);
+        }
+
+        internal static void ApplyRelicsFromPool<TEpoch, TRelicPool>(ModContentPackContext context)
+            where TEpoch : EpochModel, new()
+            where TRelicPool : RelicPoolModel
+        {
+            var types = ModContentRegistry.GetRegisteredModelsInPool(context.ModId, typeof(TRelicPool))
+                .Where(static t => typeof(RelicModel).IsAssignableFrom(t))
+                .ToArray();
+            if (types.Length == 0)
+                throw new InvalidOperationException(
+                    $"Epoch gated relics: no relic types in pool '{typeof(TRelicPool).Name}' for mod '{context.ModId}'.");
+
+            var epochId = new TEpoch().Id;
+            ModEpochGatedContentRegistry.Register(context.ModId, epochId, null, types);
+            foreach (var t in types)
+                context.Unlocks.RequireEpoch(t, epochId);
+        }
+
+        internal static void ApplyCardsFromPool<TEpoch, TCardPool>(ModContentPackContext context)
+            where TEpoch : EpochModel, new()
+            where TCardPool : CardPoolModel
+        {
+            var types = ModContentRegistry.GetRegisteredModelsInPool(context.ModId, typeof(TCardPool))
+                .Where(static t => typeof(CardModel).IsAssignableFrom(t))
+                .ToArray();
+            if (types.Length == 0)
+                throw new InvalidOperationException(
+                    $"Epoch gated cards: no card types in pool '{typeof(TCardPool).Name}' for mod '{context.ModId}'.");
+
+            var epochId = new TEpoch().Id;
+            ModEpochGatedContentRegistry.Register(context.ModId, epochId, types, null);
+            foreach (var t in types)
+                context.Unlocks.RequireEpoch(t, epochId);
+        }
+
+        internal static void ApplyRequireAllPoolCards<TEpoch, TPool>(ModContentPackContext context)
+            where TEpoch : EpochModel, new()
+            where TPool : CardPoolModel
+        {
+            var epochId = new TEpoch().Id;
+            foreach (var t in ModContentRegistry.GetRegisteredModelsInPool(context.ModId, typeof(TPool)))
+                if (typeof(CardModel).IsAssignableFrom(t))
+                    context.Unlocks.RequireEpoch(t, epochId);
+        }
+
+        internal static void ApplyRequireAllPoolRelics<TEpoch, TPool>(ModContentPackContext context)
+            where TEpoch : EpochModel, new()
+            where TPool : RelicPoolModel
+        {
+            var epochId = new TEpoch().Id;
+            foreach (var t in ModContentRegistry.GetRegisteredModelsInPool(context.ModId, typeof(TPool)))
+                if (typeof(RelicModel).IsAssignableFrom(t))
+                    context.Unlocks.RequireEpoch(t, epochId);
+        }
+
+        internal static void ApplyRequireAllPoolPotions<TEpoch, TPool>(ModContentPackContext context)
+            where TEpoch : EpochModel, new()
+            where TPool : PotionPoolModel
+        {
+            var epochId = new TEpoch().Id;
+            foreach (var t in ModContentRegistry.GetRegisteredModelsInPool(context.ModId, typeof(TPool)))
+                if (typeof(PotionModel).IsAssignableFrom(t))
+                    context.Unlocks.RequireEpoch(t, epochId);
+        }
+
+        internal static void ApplyExplicitPotions<TEpoch>(ModContentPackContext context, IReadOnlyList<Type> types)
+            where TEpoch : EpochModel, new()
+        {
+            ArgumentNullException.ThrowIfNull(types);
+            if (types.Count == 0)
+                throw new ArgumentException(
+                    $"Epoch potion gating for '{typeof(TEpoch).Name}' needs at least one potion type.");
+
+            var epochId = new TEpoch().Id;
+            foreach (var t in types)
+            {
+                if (!typeof(PotionModel).IsAssignableFrom(t))
+                    throw new ArgumentException($"Type '{t.Name}' must derive from PotionModel.", nameof(types));
+
+                context.Unlocks.RequireEpoch(t, epochId);
+            }
         }
     }
 
@@ -42,6 +133,60 @@ namespace STS2RitsuLib.Scaffolding.Content
         public void Apply(ModContentPackContext context)
         {
             context.Unlocks.RequireEpoch<TModel, TEpoch>();
+        }
+    }
+
+    /// <summary>
+    ///     For each CLR type in <typeparamref name="TEpoch" />’s
+    ///     <see cref="CardUnlockEpochTemplate.EnumerateUnlockCardTypes" />,
+    ///     registers <see cref="ModUnlockRegistry.RequireEpoch(Type,string)" />. Prefer
+    ///     <see cref="TimelineColumnPackEntry{TStory}" /> (e.g. <c>.Epoch&lt;TEpoch&gt;(e =&gt; e.Cards(...))</c>) with
+    ///     <see cref="PackDeclaredCardUnlockEpochTemplate" /> when you want card lists on the pack manifest only.
+    /// </summary>
+    public sealed class BindCardUnlockEpochPackEntry<TEpoch> : IModContentPackEntry
+        where TEpoch : CardUnlockEpochTemplate, new()
+    {
+        /// <inheritdoc />
+        public void Apply(ModContentPackContext context)
+        {
+            var epoch = new TEpoch();
+            var id = epoch.Id;
+            foreach (var t in epoch.EnumerateUnlockCardTypes())
+                context.Unlocks.RequireEpoch(t, id);
+        }
+    }
+
+    /// <summary>
+    ///     For each relic type in <typeparamref name="TEpoch" />’s
+    ///     <see cref="RelicUnlockEpochTemplate.EnumerateUnlockRelicTypes" />,
+    ///     registers <see cref="ModUnlockRegistry.RequireEpoch(Type,string)" />. Prefer
+    ///     <see cref="TimelineColumnPackEntry{TStory}" /> (e.g. <c>.Epoch&lt;TEpoch&gt;(e =&gt; e.Relics(...))</c>) with
+    ///     <see cref="PackDeclaredRelicUnlockEpochTemplate" /> when you want relic lists on the pack manifest only.
+    /// </summary>
+    public sealed class BindRelicUnlockEpochPackEntry<TEpoch> : IModContentPackEntry
+        where TEpoch : RelicUnlockEpochTemplate, new()
+    {
+        /// <inheritdoc />
+        public void Apply(ModContentPackContext context)
+        {
+            var epoch = new TEpoch();
+            var id = epoch.Id;
+            foreach (var t in epoch.EnumerateUnlockRelicTypes())
+                context.Unlocks.RequireEpoch(t, id);
+        }
+    }
+
+    /// <summary>
+    ///     <see cref="ModUnlockRegistry.UnlockEpochAfterRunAs{TCharacter, TEpoch}" />.
+    /// </summary>
+    public sealed class UnlockEpochAfterRunAsPackEntry<TCharacter, TEpoch> : IModContentPackEntry
+        where TCharacter : CharacterModel
+        where TEpoch : EpochModel, new()
+    {
+        /// <inheritdoc />
+        public void Apply(ModContentPackContext context)
+        {
+            context.Unlocks.UnlockEpochAfterRunAs<TCharacter, TEpoch>();
         }
     }
 

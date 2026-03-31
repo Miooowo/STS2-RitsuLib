@@ -6,6 +6,7 @@ using STS2RitsuLib.Keywords;
 using STS2RitsuLib.Scaffolding.Cards.HandGlow;
 using STS2RitsuLib.Scaffolding.Cards.HandOutline;
 using STS2RitsuLib.Timeline;
+using STS2RitsuLib.Timeline.Scaffolding;
 using STS2RitsuLib.Unlocks;
 
 namespace STS2RitsuLib.Scaffolding.Content
@@ -402,6 +403,17 @@ namespace STS2RitsuLib.Scaffolding.Content
         }
 
         /// <summary>
+        ///     Queues <see cref="TimelineColumnPackEntry{TStory}" /> — one fluent block for column order + per-epoch unlock
+        ///     bindings (recommended over many separate pack entry types).
+        /// </summary>
+        public ModContentPackBuilder TimelineColumn<TStory>(Action<TimelineColumnBuilder<TStory>> configure)
+            where TStory : StoryModel, new()
+        {
+            ArgumentNullException.ThrowIfNull(configure);
+            return PackEntry(new TimelineColumnPackEntry<TStory>(configure));
+        }
+
+        /// <summary>
         ///     Queues <see cref="ModTimelineRegistry.RegisterStory{TStory}" />.
         /// </summary>
         public ModContentPackBuilder Story<TStory>() where TStory : StoryModel, new()
@@ -417,6 +429,26 @@ namespace STS2RitsuLib.Scaffolding.Content
             where TEpoch : EpochModel, new()
         {
             return AddStep(ctx => ctx.Unlocks.RequireEpoch<TModel, TEpoch>());
+        }
+
+        /// <summary>
+        ///     Queues <see cref="BindCardUnlockEpochPackEntry{TEpoch}" /> — each card listed on
+        ///     <typeparamref name="TEpoch" /> requires that epoch before appearing in pools.
+        /// </summary>
+        public ModContentPackBuilder BindCardUnlockEpoch<TEpoch>()
+            where TEpoch : CardUnlockEpochTemplate, new()
+        {
+            return PackEntry(new BindCardUnlockEpochPackEntry<TEpoch>());
+        }
+
+        /// <summary>
+        ///     Queues <see cref="BindRelicUnlockEpochPackEntry{TEpoch}" /> — each relic listed on
+        ///     <typeparamref name="TEpoch" /> requires that epoch before appearing in pools.
+        /// </summary>
+        public ModContentPackBuilder BindRelicUnlockEpoch<TEpoch>()
+            where TEpoch : RelicUnlockEpochTemplate, new()
+        {
+            return PackEntry(new BindRelicUnlockEpochPackEntry<TEpoch>());
         }
 
         /// <summary>

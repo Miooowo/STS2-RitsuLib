@@ -128,6 +128,7 @@ namespace STS2RitsuLib.Lifecycle.Patches
                 case ({ } declaringType, nameof(ModelDb.Init)) when declaringType == typeof(ModelDb):
                     ModContentRegistry.FreezeRegistrations(nameof(ModelDb.Init));
                     ModTimelineRegistry.FreezeRegistrations(nameof(ModelDb.Init));
+                    ModEpochGatedContentRegistry.FreezeRegistrations(nameof(ModelDb.Init));
                     ModUnlockRegistry.FreezeRegistrations(nameof(ModelDb.Init));
                     RegistrationConflictDetector.ValidateAndLogModelIdCollisions();
                     RefreshModTypeCache();

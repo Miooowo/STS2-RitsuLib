@@ -185,6 +185,13 @@ namespace STS2RitsuLib.Unlocks.Patches
             if (!ModUnlockRegistry.TryGetAscensionRevealEpoch(characterId, out var epochId))
                 return true;
 
+            var character = ModelDb.GetById<CharacterModel>(characterId);
+            if (ModUnlockRegistry.IsEpochRequirementIgnoredForModelType(character.GetType()))
+            {
+                __result = true;
+                return false;
+            }
+
             __result = SaveManager.Instance.IsEpochRevealed(epochId);
             return false;
         }

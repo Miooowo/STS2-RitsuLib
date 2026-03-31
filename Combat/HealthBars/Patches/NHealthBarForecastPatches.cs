@@ -170,6 +170,21 @@ namespace STS2RitsuLib.Combat.HealthBars.Patches
             hpForeground.OffsetRight = GetFgWidth(healthBar, remainingHp) - GetMaxFgWidth(healthBar);
             hpForeground.Visible = remainingHp > 0;
 
+            // Mirror vanilla poison/doom precedence: once the right-growing chain is lethal,
+            // left-growing forecasts are not shown anymore.
+            if (remainingHp <= 0)
+            {
+                HideSegments(state.LeftSegments);
+                state.LastRender = new(
+                    rightIndex > 0,
+                    rightEdgeOffsetRight,
+                    creature.CurrentHp - remainingHp,
+                    remainingHp,
+                    lethalRightColor,
+                    null);
+                return;
+            }
+
             var leftSegments = BuildLeftSegments(creature, registeredSegments)
                 .OrderBy(segment => segment.Order)
                 .ThenBy(segment => segment.SequenceOrder)

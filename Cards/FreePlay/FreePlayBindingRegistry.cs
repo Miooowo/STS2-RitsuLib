@@ -6,6 +6,22 @@ using STS2RitsuLib.Utils;
 namespace STS2RitsuLib.Cards.FreePlay
 {
     /// <summary>
+    ///     Detailed free-play resolution result split by detection source.
+    /// </summary>
+    public sealed record FreePlayResolution(
+        bool IsAutoPlayNoSpend,
+        bool IsCardBindingFree,
+        bool IsDualResourceModelFree,
+        bool IsRegisteredDetectorFree)
+    {
+        /// <summary>
+        ///     True when any detection source marks this play as free.
+        /// </summary>
+        public bool IsFree => IsAutoPlayNoSpend || IsCardBindingFree || IsDualResourceModelFree ||
+                              IsRegisteredDetectorFree;
+    }
+
+    /// <summary>
     ///     Extensible binding registry for "this play is free" semantics.
     /// </summary>
     public static class FreePlayBindingRegistry
@@ -70,31 +86,51 @@ namespace STS2RitsuLib.Cards.FreePlay
             PlayStates.Set(play, new()
             {
                 IsResolved = true,
-                IsFree = true,
+                Resolution = new(false, true, false, false),
             });
         }
 
         /// <summary>
-        ///     Resolves whether this <see cref="CardPlay" /> should be treated as free, using cached play state,
-        ///     card-bound markers, and registered detectors.
+        ///     Resolves detailed free-play sources for this <see cref="CardPlay" />.
         /// </summary>
         /// <param name="play">Play instance to evaluate.</param>
-        /// <returns>True when the play should be treated as free.</returns>
-        public static bool IsFreeForPlay(CardPlay play)
+        /// <returns>A split resolution indicating which source marked the play as free.</returns>
+        public static FreePlayResolution Resolve(CardPlay play)
         {
             ArgumentNullException.ThrowIfNull(play);
 
             var cached = PlayStates.GetOrCreate(play);
             if (cached.IsResolved)
-                return cached.IsFree;
+                return cached.Resolution;
 
-            var isFree = EvaluateAndConsumeCardBindings(play) || EvaluateRegisteredDetectors(play);
+            var resolution = BuildResolution(play);
             PlayStates.Set(play, new()
             {
                 IsResolved = true,
-                IsFree = isFree,
+                Resolution = resolution,
             });
-            return isFree;
+            return resolution;
+        }
+
+        /// <summary>
+        ///     Convenience helper returning whether the play is free by any source.
+        /// </summary>
+        /// <param name="play">Play instance to evaluate.</param>
+        /// <returns>True when any free-play source applies.</returns>
+        public static bool IsFreeForPlay(CardPlay play)
+        {
+            return Resolve(play).IsFree;
+        }
+
+        private static FreePlayResolution BuildResolution(CardPlay play)
+        {
+            if (play.IsAutoPlay)
+                return new(true, false, false, false);
+
+            var isCardBindingFree = EvaluateAndConsumeCardBindings(play);
+            var isDualResourceModelFree = IsFreeByDualResourceModel(play);
+            var isRegisteredDetectorFree = EvaluateRegisteredDetectors(play);
+            return new(false, isCardBindingFree, isDualResourceModelFree, isRegisteredDetectorFree);
         }
 
         private static bool EvaluateAndConsumeCardBindings(CardPlay play)
@@ -125,7 +161,7 @@ namespace STS2RitsuLib.Cards.FreePlay
                 detectors = RegisteredDetectors.Values.ToArray();
             }
 
-            return IsFreeByDualResourceModel(play) || detectors.Any(detector => detector(play));
+            return detectors.Any(detector => detector(play));
         }
 
         private static bool IsFreeByDualResourceModel(CardPlay play)
@@ -172,7 +208,7 @@ namespace STS2RitsuLib.Cards.FreePlay
         private sealed class PlayFreeBindingState
         {
             public bool IsResolved { get; set; }
-            public bool IsFree { get; set; }
+            public FreePlayResolution Resolution { get; set; } = new(false, false, false, false);
         }
     }
 }

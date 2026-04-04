@@ -13,11 +13,6 @@ namespace STS2RitsuLib.Combat.HealthBars
         private static bool _primaryAttemptIssued;
         private static bool _secondaryAttemptIssued;
 
-        static BaseLibHealthBarForecastBridge()
-        {
-            AppDomain.CurrentDomain.AssemblyLoad += OnAssemblyLoad;
-        }
-
         public static bool ShouldRitsuRendererStandDown()
         {
             return _registered && _baselibSupportsForecastInterop;
@@ -48,6 +43,8 @@ namespace STS2RitsuLib.Combat.HealthBars
         {
             if (_registered)
                 return;
+            if (!IsBaseLibLoaded())
+                return;
 
             try
             {
@@ -69,23 +66,12 @@ namespace STS2RitsuLib.Combat.HealthBars
                 registerForeign.Invoke(null, [Const.ModId, SourceId, provider]);
                 _registered = true;
                 _baselibSupportsForecastInterop = true;
-                RitsuLibFramework.Logger.Debug("[HealthBarForecast] Registered BaseLib bridge provider.");
+                RitsuLibFramework.Logger.Info("[HealthBarForecast] Registered BaseLib bridge provider.");
             }
             catch (Exception ex)
             {
                 RitsuLibFramework.Logger.Warn($"[HealthBarForecast] Failed to register BaseLib bridge provider: {ex}");
             }
-        }
-
-        private static void OnAssemblyLoad(object? sender, AssemblyLoadEventArgs args)
-        {
-            if (_registered)
-                return;
-            var loadedAssembly = args.LoadedAssembly;
-            var type = loadedAssembly.GetType("BaseLib.Hooks.HealthBarForecastRegistry");
-            if (type == null)
-                return;
-            TryRegisterCore();
         }
 
         private static IEnumerable<object> GetSegmentsForCreature(Creature creature)
@@ -105,7 +91,7 @@ namespace STS2RitsuLib.Combat.HealthBars
                 if (_loggedMissingInterop)
                     return null;
                 _loggedMissingInterop = true;
-                RitsuLibFramework.Logger.Debug(
+                RitsuLibFramework.Logger.Info(
                     "[HealthBarForecast] BaseLib detected but forecast interop API is unavailable.");
                 return null;
             }
@@ -115,37 +101,43 @@ namespace STS2RitsuLib.Combat.HealthBars
             return registryType;
         }
 
+        private static bool IsBaseLibLoaded()
+        {
+            foreach (var mod in Sts2ModManagerCompat.EnumerateLoadedModsWithAssembly())
+            {
+                var assembly = mod.assembly;
+                if (assembly == null)
+                    continue;
+                if (assembly.GetType("BaseLib.Hooks.HealthBarForecastRegistry") != null)
+                    return true;
+            }
+
+            return false;
+        }
+
         private static Type? ResolveRegistryTypeFromLoadedAssemblies()
         {
             var byQualifiedName = Type.GetType("BaseLib.Hooks.HealthBarForecastRegistry, BaseLib");
             if (byQualifiedName != null)
                 return byQualifiedName;
 
-            foreach (var assembly in AppDomain.CurrentDomain.GetAssemblies())
+            var loadedWithAssembly = Sts2ModManagerCompat.EnumerateLoadedModsWithAssembly();
+            foreach (var mod in loadedWithAssembly)
             {
+                var assembly = mod.assembly;
+                if (assembly == null)
+                    continue;
+
                 var type = assembly.GetType("BaseLib.Hooks.HealthBarForecastRegistry");
                 if (type != null)
                     return type;
             }
 
-            try
+            foreach (var assembly in AppDomain.CurrentDomain.GetAssemblies())
             {
-                var loadedWithAssembly = Sts2ModManagerCompat.EnumerateLoadedModsWithAssembly();
-                foreach (var mod in loadedWithAssembly)
-                {
-                    var assembly = mod.assembly;
-                    if (assembly == null)
-                        continue;
-
-                    var type = assembly.GetType("BaseLib.Hooks.HealthBarForecastRegistry");
-                    if (type != null)
-                        return type;
-                }
-            }
-            catch (Exception ex)
-            {
-                RitsuLibFramework.Logger.Debug(
-                    $"[HealthBarForecast] Loaded mod enumeration failed during BaseLib detection: {ex.Message}");
+                var type = assembly.GetType("BaseLib.Hooks.HealthBarForecastRegistry");
+                if (type != null)
+                    return type;
             }
 
             return null;

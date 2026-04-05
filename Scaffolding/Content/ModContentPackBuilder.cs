@@ -362,9 +362,7 @@ namespace STS2RitsuLib.Scaffolding.Content
         }
 
         /// <summary>
-        ///     Queues full-signature
-        ///     <see cref="ModKeywordRegistry.RegisterCardKeyword(string,string?,string?,ModKeywordCardDescriptionPlacement,bool)" />
-        ///     .
+        ///     Queues extended <see cref="ModKeywordRegistry" /> card-keyword registration (placement + hover-tip flags).
         /// </summary>
         public ModContentPackBuilder CardKeyword(
             string id,
@@ -392,10 +390,7 @@ namespace STS2RitsuLib.Scaffolding.Content
         }
 
         /// <summary>
-        ///     Queues full-signature
-        ///     <see
-        ///         cref="ModKeywordRegistry.Register(string,string,string?,string?,string?,string?,ModKeywordCardDescriptionPlacement,bool)" />
-        ///     .
+        ///     Queues extended <see cref="ModKeywordRegistry" /> keyword registration (placement + hover-tip flags).
         /// </summary>
         public ModContentPackBuilder Keyword(
             string id,

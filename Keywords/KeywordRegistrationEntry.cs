@@ -37,7 +37,7 @@ namespace STS2RitsuLib.Keywords
             string TitleKey,
             string DescriptionTable,
             string DescriptionKey,
-            string? IconPath)
+            string? IconPath = null)
             : this(
                 Id,
                 TitleTable,

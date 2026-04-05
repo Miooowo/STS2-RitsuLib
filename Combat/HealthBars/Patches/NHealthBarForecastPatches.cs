@@ -369,9 +369,6 @@ namespace STS2RitsuLib.Combat.HealthBars.Patches
         
         private static bool IsDoomLethalAfterRight(NHealthBar healthBar, Creature creature)
         {
-            if (!creature.HasPower<DoomPower>())
-                return false;
-
             var doomAmount = creature.GetPowerAmount<DoomPower>();
             if (doomAmount <= 0)
                 return false;

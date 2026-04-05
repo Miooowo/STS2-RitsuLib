@@ -4,6 +4,14 @@ using STS2RitsuLib.Compat;
 
 namespace STS2RitsuLib.Combat.HealthBars
 {
+    /// <summary>
+    ///     When BaseLib is loaded, registers <see cref="HealthBarForecastRegistry.GetSegments" /> with BaseLib's
+    ///     <c>HealthBarForecastRegistry.RegisterForeign</c> so a single renderer can consume Ritsu-typed segments.
+    /// </summary>
+    /// <remarks>
+    ///     <see cref="ShouldRitsuRendererStandDown" /> becomes true after a successful bridge so duplicate overlays are
+    ///     not drawn.
+    /// </remarks>
     internal static class BaseLibHealthBarForecastBridge
     {
         private const string SourceId = "ritsulib.registry";
@@ -14,11 +22,18 @@ namespace STS2RitsuLib.Combat.HealthBars
         private static bool _primaryAttemptIssued;
         private static bool _secondaryAttemptIssued;
 
+        /// <summary>
+        ///     When <see langword="true" />, Ritsu's <c>NHealthBar</c> forecast postfixes should skip drawing because BaseLib
+        ///     already merged this mod's segments.
+        /// </summary>
         public static bool ShouldRitsuRendererStandDown()
         {
             return _registered && _baselibSupportsForecastInterop;
         }
 
+        /// <summary>
+        ///     Attempts foreign registration from <c>NHealthBar._Ready</c> (early load path).
+        /// </summary>
         public static void TryRegisterPrimary()
         {
             if (_primaryAttemptIssued || _registered)
@@ -27,6 +42,9 @@ namespace STS2RitsuLib.Combat.HealthBars
             TryRegisterCore();
         }
 
+        /// <summary>
+        ///     Attempts foreign registration from forecast render path if <see cref="TryRegisterPrimary" /> did not run yet.
+        /// </summary>
         public static void TryRegisterSecondary()
         {
             if (_secondaryAttemptIssued || _registered)
@@ -35,6 +53,9 @@ namespace STS2RitsuLib.Combat.HealthBars
             TryRegisterCore();
         }
 
+        /// <summary>
+        ///     Alias for <see cref="TryRegisterPrimary" />.
+        /// </summary>
         public static void TryRegister()
         {
             TryRegisterPrimary();

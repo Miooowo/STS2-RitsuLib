@@ -7,6 +7,10 @@ using STS2RitsuLib.Utils;
 
 namespace STS2RitsuLib.Combat.HealthBars.Patches
 {
+    /// <summary>
+    ///     Standalone forecast overlay logic for <see cref="NHealthBar" /> when BaseLib interop is unavailable or has not
+    ///     taken over rendering.
+    /// </summary>
     internal static class NHealthBarForecastPatchHelper
     {
         // ReSharper disable InconsistentNaming

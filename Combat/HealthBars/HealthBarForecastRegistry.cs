@@ -111,6 +111,9 @@ namespace STS2RitsuLib.Combat.HealthBars
         /// <summary>
         ///     Registers or replaces a forecast provider for <paramref name="modId" />.
         /// </summary>
+        /// <typeparam name="TSource">Concrete <see cref="IHealthBarForecastSource" /> with a parameterless constructor.</typeparam>
+        /// <param name="modId">Owning mod identifier.</param>
+        /// <param name="sourceId">Optional unique id; defaults to the type full name.</param>
         public static void Register<TSource>(string modId, string? sourceId = null)
             where TSource : IHealthBarForecastSource, new()
         {
@@ -120,6 +123,9 @@ namespace STS2RitsuLib.Combat.HealthBars
         /// <summary>
         ///     Registers or replaces a forecast source instance for <paramref name="modId" />.
         /// </summary>
+        /// <param name="modId">Owning mod identifier.</param>
+        /// <param name="sourceId">Unique id for this source within the mod.</param>
+        /// <param name="source">Provider instance.</param>
         public static void Register(
             string modId,
             string sourceId,
@@ -143,6 +149,9 @@ namespace STS2RitsuLib.Combat.HealthBars
         /// <summary>
         ///     Removes a previously registered provider.
         /// </summary>
+        /// <param name="modId">Mod identifier used at registration.</param>
+        /// <param name="sourceId">Source id used at registration.</param>
+        /// <returns><see langword="true" /> if an entry was removed.</returns>
         public static bool Unregister(string modId, string sourceId)
         {
             ArgumentException.ThrowIfNullOrWhiteSpace(modId);
@@ -154,6 +163,10 @@ namespace STS2RitsuLib.Combat.HealthBars
             }
         }
 
+        /// <summary>
+        ///     Collects segments from powers implementing <see cref="IHealthBarForecastSource" /> and registered providers.
+        /// </summary>
+        /// <param name="creature">Creature whose bar is being evaluated.</param>
         internal static IReadOnlyList<RegisteredHealthBarForecastSegment> GetSegments(Creature creature)
         {
             ArgumentNullException.ThrowIfNull(creature);
@@ -213,6 +226,11 @@ namespace STS2RitsuLib.Combat.HealthBars
             }
         }
 
+        /// <summary>
+        ///     Segment plus a sequence key for stable ordering when <see cref="HealthBarForecastSegment.Order" /> ties.
+        /// </summary>
+        /// <param name="Segment">Forecast data.</param>
+        /// <param name="SequenceOrder">Monotonic key (powers first, then registered sources).</param>
         internal readonly record struct RegisteredHealthBarForecastSegment(
             HealthBarForecastSegment Segment,
             long SequenceOrder);

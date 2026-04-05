@@ -44,6 +44,10 @@ namespace STS2RitsuLib.Utils
         ///     Builds a <c>ShaderMaterial</c> using the game's doom health bar shader (<c>doom_bar.gdshader</c>) with the same
         ///     noise settings as <c>health_bar.tscn</c> and a caller-supplied gradient.
         /// </summary>
+        /// <remarks>
+        ///     Typical use: <see cref="Combat.HealthBars.HealthBarForecastSegment.OverlayMaterial" /> on custom forecast
+        ///     overlays so they read like the vanilla doom strip (see also <c>CreateVanillaDoomBarGradientTexture</c>).
+        /// </remarks>
         public static ShaderMaterial CreateDoomBarShaderMaterial(GradientTexture1D gradientTexture)
         {
             ArgumentNullException.ThrowIfNull(gradientTexture);

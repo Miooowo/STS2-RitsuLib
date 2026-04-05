@@ -1,5 +1,4 @@
 using Godot;
-using MegaCrit.Sts2.addons.mega_text;
 using MegaCrit.Sts2.Core.Entities.Creatures;
 using MegaCrit.Sts2.Core.Models.Powers;
 using MegaCrit.Sts2.Core.Nodes.Combat;
@@ -10,6 +9,8 @@ namespace STS2RitsuLib.Combat.HealthBars.Patches
 {
     internal static class NHealthBarForecastPatchHelper
     {
+        // ReSharper disable InconsistentNaming
+
         private static readonly AttachedState<NHealthBar, HealthBarForecastUiState?> UiStates = new(() => null);
 
         private static readonly Color DoomLethalTextColor = new("FB8DFF");
@@ -72,7 +73,11 @@ namespace STS2RitsuLib.Combat.HealthBars.Patches
                 var leftWidth = GetFgWidth(healthBar, remainingHp);
                 var rightWidth = GetFgWidth(healthBar, previousHp);
                 node.Visible = true;
-                ApplyForecastSegmentAppearance(node, segment.Color, segment.OverlayMaterial);
+                ApplyForecastSegmentAppearance(
+                    node,
+                    segment.Color,
+                    segment.OverlayMaterial,
+                    segment.OverlaySelfModulate);
                 node.OffsetLeft = remainingHp > 0 ? Math.Max(0f, leftWidth - node.PatchMarginLeft) : 0f;
                 node.OffsetRight = rightWidth - maxWidth;
 
@@ -142,7 +147,11 @@ namespace STS2RitsuLib.Combat.HealthBars.Patches
                 var endWidth = GetFgWidth(healthBar, leftAccumulated);
 
                 node.Visible = true;
-                ApplyForecastSegmentAppearance(node, segment.Color, segment.OverlayMaterial);
+                ApplyForecastSegmentAppearance(
+                    node,
+                    segment.Color,
+                    segment.OverlayMaterial,
+                    segment.OverlaySelfModulate);
                 node.OffsetLeft = segmentStart > 0 ? Math.Max(0f, startWidth - node.PatchMarginLeft) : 0f;
                 var leftOffsetRight = Math.Min(0f, endWidth - maxWidth + node.PatchMarginRight);
                 if (rightIndex > 0)
@@ -209,6 +218,7 @@ namespace STS2RitsuLib.Combat.HealthBars.Patches
                 hpLabel.AddThemeColorOverride("font_outline_color", DoomLethalOutlineColor);
                 return;
             }
+
             hpLabel.AddThemeColorOverride("font_color", lethalColor.Value);
             hpLabel.AddThemeColorOverride("font_outline_color", DarkenForOutline(lethalColor.Value));
         }
@@ -222,7 +232,8 @@ namespace STS2RitsuLib.Combat.HealthBars.Patches
                     registered.Segment.Direction,
                     registered.Segment.Order,
                     registered.SequenceOrder,
-                    registered.Segment.OverlayMaterial))
+                    registered.Segment.OverlayMaterial,
+                    registered.Segment.OverlaySelfModulate))
                 .Where(segment => segment.Amount > 0)
                 .ToArray();
         }
@@ -284,13 +295,11 @@ namespace STS2RitsuLib.Combat.HealthBars.Patches
 
         private static void EnsureOverlayOrder(NHealthBar healthBar, HealthBarForecastUiState state)
         {
-            if (healthBar._poisonForeground is not Control poisonForeground ||
-                healthBar._hpForeground is not Control hpForeground ||
-                healthBar._doomForeground is not Control doomForeground ||
+            if (healthBar._poisonForeground is not { } poisonForeground ||
+                healthBar._hpForeground is not { } hpForeground ||
+                healthBar._doomForeground is not { } doomForeground ||
                 poisonForeground.GetParent() is not Control mask)
-            {
                 return;
-            }
 
             var poisonIndex = poisonForeground.GetIndex();
             var hpIndex = hpForeground.GetIndex();
@@ -333,10 +342,18 @@ namespace STS2RitsuLib.Combat.HealthBars.Patches
             }
         }
 
-        private static void ApplyForecastSegmentAppearance(NinePatchRect node, Color color, Material? overlayMaterial)
+        /// <summary>
+        ///     Applies segment material and <see cref="CanvasItem.SelfModulate" />; overlay uses
+        ///     <paramref name="overlaySelfModulate" /> when set, otherwise <paramref name="color" />.
+        /// </summary>
+        private static void ApplyForecastSegmentAppearance(
+            NinePatchRect node,
+            Color color,
+            Material? overlayMaterial,
+            Color? overlaySelfModulate)
         {
             node.Material = overlayMaterial;
-            node.SelfModulate = color;
+            node.SelfModulate = overlaySelfModulate ?? color;
         }
 
         private static float GetMaxFgWidth(NHealthBar healthBar)
@@ -378,7 +395,7 @@ namespace STS2RitsuLib.Combat.HealthBars.Patches
                 Math.Clamp(color.G * 0.3f, 0f, 1f),
                 Math.Clamp(color.B * 0.3f, 0f, 1f));
         }
-        
+
         private static bool IsDoomLethalAfterRight(NHealthBar healthBar, Creature creature)
         {
             var doomAmount = creature.GetPowerAmount<DoomPower>();
@@ -408,13 +425,17 @@ namespace STS2RitsuLib.Combat.HealthBars.Patches
             public HealthBarForecastRenderResult LastRender { get; set; } = HealthBarForecastRenderResult.Empty;
         }
 
+        /// <summary>
+        ///     Snapshot of one registry segment plus render order for layout and lethal text resolution.
+        /// </summary>
         private readonly record struct CustomSegment(
             int Amount,
             Color Color,
             HealthBarForecastGrowthDirection Direction,
             int Order,
             long SequenceOrder,
-            Material? OverlayMaterial);
+            Material? OverlayMaterial,
+            Color? OverlaySelfModulate);
 
         private readonly record struct HealthBarForecastRenderResult(
             bool HasRightForecast,
@@ -424,6 +445,8 @@ namespace STS2RitsuLib.Combat.HealthBars.Patches
         {
             public static HealthBarForecastRenderResult Empty => new(false, 0f, null, null);
         }
+
+        // ReSharper restore InconsistentNaming
     }
 
     internal sealed class NHealthBarReadyForecastPatch : IPatchMethod
@@ -437,6 +460,7 @@ namespace STS2RitsuLib.Combat.HealthBars.Patches
             return [new(typeof(NHealthBar), "_Ready")];
         }
 
+        // ReSharper disable once InconsistentNaming
         public static void Postfix(NHealthBar __instance)
         {
             BaseLibHealthBarForecastBridge.TryRegisterPrimary();
@@ -454,6 +478,7 @@ namespace STS2RitsuLib.Combat.HealthBars.Patches
             return [new(typeof(NHealthBar), "RefreshForeground")];
         }
 
+        // ReSharper disable once InconsistentNaming
         public static void Postfix(NHealthBar __instance)
         {
             NHealthBarForecastPatchHelper.RefreshForegroundOverlay(__instance);
@@ -471,6 +496,7 @@ namespace STS2RitsuLib.Combat.HealthBars.Patches
             return [new(typeof(NHealthBar), "RefreshMiddleground")];
         }
 
+        // ReSharper disable once InconsistentNaming
         public static void Postfix(NHealthBar __instance)
         {
             NHealthBarForecastPatchHelper.RefreshMiddlegroundOverlay(__instance);
@@ -488,6 +514,7 @@ namespace STS2RitsuLib.Combat.HealthBars.Patches
             return [new(typeof(NHealthBar), "RefreshText")];
         }
 
+        // ReSharper disable once InconsistentNaming
         public static void Postfix(NHealthBar __instance)
         {
             NHealthBarForecastPatchHelper.RefreshTextOverlay(__instance);

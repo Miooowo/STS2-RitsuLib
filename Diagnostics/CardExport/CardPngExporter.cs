@@ -434,7 +434,7 @@ namespace STS2RitsuLib.Diagnostics.CardExport
                 RefreshMainExportCardVisuals(built.MainCard);
             foreach (var n in built.RefHoverTipCards)
                 if (GodotObject.IsInstanceValid(n))
-                    n.UpdateVisuals(PileType.Deck, CardPreviewMode.Normal);
+                    ApplyCardLibraryStyleExportVisuals(n, PileType.Deck);
         }
 
         private static void ResizeViewportToHoverRow(BuiltCaptureViewport built)
@@ -582,7 +582,14 @@ namespace STS2RitsuLib.Diagnostics.CardExport
         /// </summary>
         private static void RefreshMainExportCardVisuals(NCard nCard)
         {
-            nCard.UpdateVisuals(PileType.None, CardPreviewMode.Normal);
+            ApplyCardLibraryStyleExportVisuals(nCard, PileType.None);
+        }
+
+        private static void ApplyCardLibraryStyleExportVisuals(NCard nCard, PileType pileType)
+        {
+            nCard.UpdateVisuals(pileType, CardPreviewMode.Normal);
+            if (nCard.Model is { IsUpgraded: true })
+                nCard.ShowUpgradePreview();
         }
 
         private static void PopulateHoverLayouts(VBoxContainer refCardsColumn, VBoxContainer textTipsColumn,

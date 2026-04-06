@@ -1,5 +1,4 @@
 using System.Reflection;
-using HarmonyLib;
 using MegaCrit.Sts2.Core.Helpers;
 using MegaCrit.Sts2.Core.Map;
 using MegaCrit.Sts2.Core.Models;
@@ -10,7 +9,8 @@ using STS2RitsuLib.Utils;
 namespace STS2RitsuLib.Scaffolding.Content.Patches
 {
     /// <summary>
-    ///     Vanilla run-history rows call <see cref="ImageHelper.GetRoomIconPath" /> / <see cref="ImageHelper.GetRoomIconOutlinePath" />
+    ///     Vanilla run-history rows call <see cref="ImageHelper.GetRoomIconPath" /> /
+    ///     <see cref="ImageHelper.GetRoomIconOutlinePath" />
     ///     directly, bypassing <see cref="AncientEventModel.RunHistoryIcon" />. This prefix returns mod
     ///     <see cref="IModAncientEventAssetOverrides" /> paths at resolve time so the first load uses the correct textures
     ///     (no post-load replacement on <c>NMapPointHistoryEntry</c>).

@@ -158,6 +158,7 @@ namespace STS2RitsuLib
 
             patcher.RegisterPatch<EventLayoutScenePatch>();
             patcher.RegisterPatch<EventInitialPortraitPatch>();
+            patcher.RegisterPatch<EventBackgroundScenePathGetterPatch>();
             patcher.RegisterPatch<EventBackgroundScenePatch>();
             patcher.RegisterPatch<EventHasVfxPatch>();
             patcher.RegisterPatch<EventCreateVfxPatch>();

@@ -1440,6 +1440,44 @@ namespace STS2RitsuLib.Scaffolding.Content.Patches
     }
 
     /// <summary>
+    ///     Patches <c>EventModel.BackgroundScenePath</c> so preloads and <see cref="EventModel.CreateBackgroundScene" /> use
+    ///     <see cref="IModEventAssetOverrides.CustomBackgroundScenePath" /> instead of the synthetic
+    ///     <c>events/background_scenes/&lt;id&gt;.tscn</c> path (which mod packs usually do not ship).
+    /// </summary>
+    public class EventBackgroundScenePathGetterPatch : IPatchMethod
+    {
+        /// <inheritdoc cref="IPatchMethod.PatchId" />
+        public static string PatchId => "content_asset_override_event_background_scene_path_getter";
+
+        /// <inheritdoc cref="IPatchMethod.Description" />
+        public static string Description =>
+            "Route EventModel.BackgroundScenePath to mod CustomBackgroundScenePath when the resource exists";
+
+        /// <inheritdoc cref="IPatchMethod.IsCritical" />
+        public static bool IsCritical => false;
+
+        /// <inheritdoc cref="IPatchMethod.GetTargets" />
+        public static ModPatchTarget[] GetTargets()
+        {
+            return [new(typeof(EventModel), "get_BackgroundScenePath")];
+        }
+
+        // ReSharper disable once InconsistentNaming
+        /// <summary>
+        ///     Supplies <see cref="IModEventAssetOverrides.CustomBackgroundScenePath" /> when the resource exists.
+        /// </summary>
+        public static bool Prefix(EventModel __instance, ref string __result)
+            // ReSharper restore InconsistentNaming
+        {
+            return ContentAssetOverridePatchHelper.TryUseStringOverride<IModEventAssetOverrides>(
+                __instance,
+                ref __result,
+                o => o.CustomBackgroundScenePath,
+                nameof(IModEventAssetOverrides.CustomBackgroundScenePath));
+        }
+    }
+
+    /// <summary>
     ///     Patches <see cref="EventModel.CreateScene" /> for <see cref="IModEventAssetOverrides" />.
     /// </summary>
     public class EventLayoutScenePatch : IPatchMethod

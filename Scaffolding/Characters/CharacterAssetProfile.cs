@@ -1,4 +1,5 @@
 using Godot;
+using STS2RitsuLib.Scaffolding.Characters.Visuals.Definition;
 
 namespace STS2RitsuLib.Scaffolding.Characters
 {
@@ -114,13 +115,15 @@ namespace STS2RitsuLib.Scaffolding.Characters
     /// <param name="Spine">Spine data.</param>
     /// <param name="Audio">FMOD event ids or paths.</param>
     /// <param name="Multiplayer">Multiplayer hand art.</param>
+    /// <param name="CombatVisuals">Non-Spine combat / game-over visual cues (texture swaps).</param>
     public sealed record CharacterAssetProfile(
         CharacterSceneAssetSet? Scenes = null,
         CharacterUiAssetSet? Ui = null,
         CharacterVfxAssetSet? Vfx = null,
         CharacterSpineAssetSet? Spine = null,
         CharacterAudioAssetSet? Audio = null,
-        CharacterMultiplayerAssetSet? Multiplayer = null)
+        CharacterMultiplayerAssetSet? Multiplayer = null,
+        CharacterCombatVisualCueSet? CombatVisuals = null)
     {
         /// <summary>
         ///     Profile with all components null (merge / fill helpers treat null as “missing”).

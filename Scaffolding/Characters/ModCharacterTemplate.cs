@@ -1,4 +1,5 @@
 using MegaCrit.Sts2.Core.Models;
+using STS2RitsuLib.Scaffolding.Characters.Visuals.Definition;
 
 namespace STS2RitsuLib.Scaffolding.Characters
 {
@@ -133,6 +134,12 @@ namespace STS2RitsuLib.Scaffolding.Characters
         ///     Texture path for the scissors hand in multiplayer RPS-style UI.
         /// </summary>
         string? CustomArmScissorsTexturePath { get; }
+
+        /// <summary>
+        ///     Optional per-cue static textures and frame sequences for non-Spine combat / game-over visuals; define with
+        ///     <see cref="ModCharacterCombatVisuals" /> (runtime: <see cref="Visuals.ModCreatureVisualPlayback" />).
+        /// </summary>
+        CharacterCombatVisualCueSet? CombatVisualCues { get; }
     }
 
     /// <summary>
@@ -314,6 +321,9 @@ namespace STS2RitsuLib.Scaffolding.Characters
 
         /// <inheritdoc />
         public virtual string? CustomArmScissorsTexturePath => ResolvedAssetProfile.Multiplayer?.ArmScissorsTexturePath;
+
+        /// <inheritdoc />
+        public virtual CharacterCombatVisualCueSet? CombatVisualCues => ResolvedAssetProfile.CombatVisuals;
 
         /// <summary>
         ///     Maps model CLR types to live <typeparamref name="TModel" /> instances from <see cref="ModelDb" />.

@@ -1,3 +1,5 @@
+using STS2RitsuLib.Scaffolding.Characters.Visuals.Definition;
+
 namespace STS2RitsuLib.Scaffolding.Characters
 {
     /// <summary>
@@ -76,7 +78,8 @@ namespace STS2RitsuLib.Scaffolding.Characters
                 MergeVfx(fallback.Vfx, profile.Vfx),
                 MergeSpine(fallback.Spine, profile.Spine),
                 MergeAudio(fallback.Audio, profile.Audio),
-                MergeMultiplayer(fallback.Multiplayer, profile.Multiplayer));
+                MergeMultiplayer(fallback.Multiplayer, profile.Multiplayer),
+                MergeCombatVisuals(fallback.CombatVisuals, profile.CombatVisuals));
         }
 
         /// <summary>
@@ -199,6 +202,57 @@ namespace STS2RitsuLib.Scaffolding.Characters
                     profile.ArmScissorsTexturePath ?? fallback.ArmScissorsTexturePath);
         }
 
+        private static CharacterCombatVisualCueSet? MergeCombatVisuals(
+            CharacterCombatVisualCueSet? fallback,
+            CharacterCombatVisualCueSet? profile)
+        {
+            if (fallback == null)
+                return profile;
+
+            if (profile == null)
+                return fallback;
+
+            var mergedTex = MergeCueTextureMap(fallback.TexturePathByCue, profile.TexturePathByCue);
+            var mergedSeq = MergeCueFrameSequenceMap(fallback.FrameSequenceByCue, profile.FrameSequenceByCue);
+
+            if (mergedTex == null && mergedSeq == null)
+                return new();
+
+            return new(mergedTex, mergedSeq);
+        }
+
+        private static IReadOnlyDictionary<string, string>? MergeCueTextureMap(
+            IReadOnlyDictionary<string, string>? fallback,
+            IReadOnlyDictionary<string, string>? profile)
+        {
+            if (profile is not { Count: > 0 }) return fallback is { Count: > 0 } ? fallback : null;
+            if (fallback is not { Count: > 0 })
+                return profile;
+
+            var merged = new Dictionary<string, string>(fallback, StringComparer.OrdinalIgnoreCase);
+            foreach (var kv in profile)
+                merged[kv.Key] = kv.Value;
+
+            return merged;
+        }
+
+        private static IReadOnlyDictionary<string, CharacterVisualFrameSequence>? MergeCueFrameSequenceMap(
+            IReadOnlyDictionary<string, CharacterVisualFrameSequence>? fallback,
+            IReadOnlyDictionary<string, CharacterVisualFrameSequence>? profile)
+        {
+            if (profile is not { Count: > 0 }) return fallback is { Count: > 0 } ? fallback : null;
+            if (fallback is not { Count: > 0 })
+                return profile;
+
+            var merged = new Dictionary<string, CharacterVisualFrameSequence>(fallback,
+                StringComparer.OrdinalIgnoreCase);
+            foreach (var kv in profile)
+                merged[kv.Key] = kv.Value;
+
+            return merged;
+
+        }
+
         extension(CharacterAssetProfile profile)
         {
             /// <summary>
@@ -278,6 +332,16 @@ namespace STS2RitsuLib.Scaffolding.Characters
                 ArgumentNullException.ThrowIfNull(profile);
                 ArgumentNullException.ThrowIfNull(multiplayer);
                 return profile with { Multiplayer = multiplayer };
+            }
+
+            /// <summary>
+            ///     Returns a copy with <see cref="CharacterAssetProfile.CombatVisuals" /> replaced.
+            /// </summary>
+            public CharacterAssetProfile WithCombatVisuals(CharacterCombatVisualCueSet combatVisuals)
+            {
+                ArgumentNullException.ThrowIfNull(profile);
+                ArgumentNullException.ThrowIfNull(combatVisuals);
+                return profile with { CombatVisuals = combatVisuals };
             }
         }
     }

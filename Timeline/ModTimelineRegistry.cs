@@ -109,6 +109,8 @@ namespace STS2RitsuLib.Timeline
                 foreach (var registry in Registries.Values)
                     registry._freezeReason = reason;
             }
+
+            ModTimelineLayoutRegistry.FreezeAndValidate();
         }
 
         /// <summary>

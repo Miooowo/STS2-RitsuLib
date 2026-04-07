@@ -140,6 +140,12 @@ namespace STS2RitsuLib.Scaffolding.Characters
         ///     <see cref="ModCharacterCombatVisuals" /> (runtime: <see cref="Visuals.ModCreatureVisualPlayback" />).
         /// </summary>
         CharacterCombatVisualCueSet? CombatVisualCues { get; }
+
+        /// <summary>
+        ///     Optional merchant / rest-site procedural shells (no custom merchant or rest-site character <c>tscn</c>);
+        ///     see <see cref="ModCharacterWorldSceneVisuals" />.
+        /// </summary>
+        CharacterWorldProceduralVisualSet? WorldProceduralVisuals { get; }
     }
 
     /// <summary>
@@ -324,6 +330,10 @@ namespace STS2RitsuLib.Scaffolding.Characters
 
         /// <inheritdoc />
         public virtual CharacterCombatVisualCueSet? CombatVisualCues => ResolvedAssetProfile.CombatVisuals;
+
+        /// <inheritdoc />
+        public virtual CharacterWorldProceduralVisualSet? WorldProceduralVisuals =>
+            ResolvedAssetProfile.WorldProceduralVisuals;
 
         /// <summary>
         ///     Maps model CLR types to live <typeparamref name="TModel" /> instances from <see cref="ModelDb" />.

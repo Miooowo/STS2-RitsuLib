@@ -1,5 +1,3 @@
-using System.Collections.Generic;
-
 namespace STS2RitsuLib.Scaffolding.Characters.Visuals.Definition
 {
     /// <summary>

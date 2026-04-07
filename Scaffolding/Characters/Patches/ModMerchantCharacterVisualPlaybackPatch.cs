@@ -1,8 +1,10 @@
 using MegaCrit.Sts2.Core.Bindings.MegaSpine;
+using MegaCrit.Sts2.Core.Models;
 using MegaCrit.Sts2.Core.Nodes.Rooms;
 using MegaCrit.Sts2.Core.Nodes.Screens.Shops;
 using STS2RitsuLib.Patching.Models;
 using STS2RitsuLib.Scaffolding.Characters.Visuals;
+using STS2RitsuLib.Scaffolding.Characters.Visuals.Definition;
 
 namespace STS2RitsuLib.Scaffolding.Characters.Patches
 {
@@ -44,7 +46,18 @@ namespace STS2RitsuLib.Scaffolding.Characters.Patches
             ModCreatureVisualPlayback.TryResolveMerchantCharacterModel(NMerchantRoom.Instance, __instance,
                 out var character);
 
-            return !ModCreatureVisualPlayback.TryPlayOnVisualRoot(__instance, character, anim, loop);
+            var worldCues = TryGetMerchantWorldCueSet(character);
+            return !ModCreatureVisualPlayback.TryPlayOnVisualRoot(__instance, character, anim, loop, worldCues);
+        }
+
+        private static CharacterCombatVisualCueSet? TryGetMerchantWorldCueSet(CharacterModel? character)
+        {
+            return character is not IModCharacterAssetOverrides
+            {
+                WorldProceduralVisuals.Merchant.CueSet: { } cueSet,
+            }
+                ? null
+                : cueSet;
         }
     }
 }

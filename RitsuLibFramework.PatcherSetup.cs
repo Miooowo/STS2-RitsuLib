@@ -203,6 +203,9 @@ namespace STS2RitsuLib
             patcher.RegisterPatch<CharacterGameOverScreenCompatibilityPatch>();
             patcher.RegisterPatch<ModCreatureNonSpineAnimationPlaybackPatch>();
             patcher.RegisterPatch<ModMerchantCharacterVisualPlaybackPatch>();
+            patcher.RegisterPatch<NMerchantRoomProceduralCharacterInstantiationPatch>();
+            patcher.RegisterPatch<NRestSiteCharacterCreateProceduralPatch>();
+            patcher.RegisterPatch<NRestSiteRoomProceduralVisualPlaybackPatch>();
             patcher.RegisterPatch<CardLibraryCompendiumPatch>();
             patcher.RegisterPatch<StatsScreenCharacterStatsPatch>();
             RegisterFrameworkPatcher(FrameworkPatcherArea.CharacterAssets, patcher);

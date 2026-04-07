@@ -1,6 +1,3 @@
-using System;
-using System.Collections.Generic;
-
 namespace STS2RitsuLib.Scaffolding.Characters.Visuals.Definition
 {
     /// <summary>
@@ -18,7 +15,10 @@ namespace STS2RitsuLib.Scaffolding.Characters.Visuals.Definition
         /// <summary>
         ///     Starts a new frame sequence definition.
         /// </summary>
-        public static CharacterVisualFrameSequenceBuilder Create() => new();
+        public static CharacterVisualFrameSequenceBuilder Create()
+        {
+            return new();
+        }
 
         /// <summary>
         ///     Appends a frame after any existing ones.
@@ -30,7 +30,7 @@ namespace STS2RitsuLib.Scaffolding.Characters.Visuals.Definition
                 throw new ArgumentOutOfRangeException(nameof(durationSeconds), durationSeconds,
                     "Frame duration must be positive.");
 
-            _frames.Add(new CharacterVisualFrame(texturePath, durationSeconds));
+            _frames.Add(new(texturePath, durationSeconds));
             return this;
         }
 
@@ -48,10 +48,9 @@ namespace STS2RitsuLib.Scaffolding.Characters.Visuals.Definition
         /// </summary>
         public CharacterVisualFrameSequence Build()
         {
-            if (_frames.Count == 0)
-                throw new InvalidOperationException("Add at least one frame before Build().");
-
-            return new CharacterVisualFrameSequence([.. _frames], _loop);
+            return _frames.Count == 0
+                ? throw new InvalidOperationException("Add at least one frame before Build().")
+                : new([.. _frames], _loop);
         }
     }
 }

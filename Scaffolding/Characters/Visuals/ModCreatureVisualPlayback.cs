@@ -56,7 +56,7 @@ namespace STS2RitsuLib.Scaffolding.Characters.Visuals
 
             CueFrameSequencePlayer.StopUnder(visuals);
 
-            if (TryApplyCombatVisualCues(visuals, character, names))
+            if (TryApplyCombatVisualCues(visuals, character, names, null))
                 return true;
 
             return TryPlaySpine(visuals, names, loop) || TryPlayGodotAnimations(visuals, names);
@@ -66,7 +66,16 @@ namespace STS2RitsuLib.Scaffolding.Characters.Visuals
         ///     Plays a merchant-room style animation or static cue on an arbitrary root (typically
         ///     <see cref="MegaCrit.Sts2.Core.Nodes.Screens.Shops.NMerchantCharacter" />).
         /// </summary>
-        public static bool TryPlayOnVisualRoot(Node root, CharacterModel? character, string animName, bool loop = false)
+        /// <param name="root">Visual root (merchant, rest-site character, …).</param>
+        /// <param name="character">Owner for cue lookup.</param>
+        /// <param name="animName">Logical animation / cue name.</param>
+        /// <param name="loop">Loop hint for Spine (non-Spine paths ignore where not applicable).</param>
+        /// <param name="cueSetOverride">
+        ///     When set (e.g. <see cref="IModCharacterAssetOverrides.WorldProceduralVisuals" /> merchant / rest cues),
+        ///     used instead of <see cref="IModCharacterAssetOverrides.CombatVisualCues" /> for texture / frame lookup.
+        /// </param>
+        public static bool TryPlayOnVisualRoot(Node root, CharacterModel? character, string animName, bool loop = false,
+            CharacterCombatVisualCueSet? cueSetOverride = null)
         {
             if (!GodotObject.IsInstanceValid(root) || string.IsNullOrWhiteSpace(animName))
                 return false;
@@ -75,7 +84,8 @@ namespace STS2RitsuLib.Scaffolding.Characters.Visuals
 
             CueFrameSequencePlayer.StopUnder(root);
 
-            return TryApplyCombatVisualCues(root, character, names) || TryPlayGodotAnimations(root, names);
+            return TryApplyCombatVisualCues(root, character, names, cueSetOverride)
+                   || TryPlayGodotAnimations(root, names);
         }
 
         /// <summary>
@@ -153,9 +163,13 @@ namespace STS2RitsuLib.Scaffolding.Characters.Visuals
         }
 
         private static bool TryApplyCombatVisualCues(Node visualsRoot, CharacterModel? character,
-            ReadOnlySpan<string> names)
+            ReadOnlySpan<string> names, CharacterCombatVisualCueSet? cueOverride)
         {
-            if (character is not IModCharacterAssetOverrides { CombatVisualCues: { } cues })
+            var cues = cueOverride;
+            if (cues == null && character is IModCharacterAssetOverrides { CombatVisualCues: { } cc })
+                cues = cc;
+
+            if (cues == null)
                 return false;
 
             return TryApplyFrameSequences(visualsRoot, cues, names)

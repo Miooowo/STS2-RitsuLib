@@ -79,7 +79,8 @@ namespace STS2RitsuLib.Scaffolding.Characters
                 MergeSpine(fallback.Spine, profile.Spine),
                 MergeAudio(fallback.Audio, profile.Audio),
                 MergeMultiplayer(fallback.Multiplayer, profile.Multiplayer),
-                MergeCombatVisuals(fallback.CombatVisuals, profile.CombatVisuals));
+                MergeCombatVisuals(fallback.CombatVisuals, profile.CombatVisuals),
+                MergeWorldProceduralVisuals(fallback.WorldProceduralVisuals, profile.WorldProceduralVisuals));
         }
 
         /// <summary>
@@ -202,6 +203,25 @@ namespace STS2RitsuLib.Scaffolding.Characters
                     profile.ArmScissorsTexturePath ?? fallback.ArmScissorsTexturePath);
         }
 
+        private static CharacterWorldProceduralVisualSet? MergeWorldProceduralVisuals(
+            CharacterWorldProceduralVisualSet? fallback,
+            CharacterWorldProceduralVisualSet? profile)
+        {
+            if (fallback == null)
+                return profile;
+
+            if (profile == null)
+                return fallback;
+
+            var merchant = profile.Merchant ?? fallback.Merchant;
+            var restSite = profile.RestSite ?? fallback.RestSite;
+
+            if (merchant == null && restSite == null)
+                return null;
+
+            return new(merchant, restSite);
+        }
+
         private static CharacterCombatVisualCueSet? MergeCombatVisuals(
             CharacterCombatVisualCueSet? fallback,
             CharacterCombatVisualCueSet? profile)
@@ -250,7 +270,6 @@ namespace STS2RitsuLib.Scaffolding.Characters
                 merged[kv.Key] = kv.Value;
 
             return merged;
-
         }
 
         extension(CharacterAssetProfile profile)
@@ -342,6 +361,16 @@ namespace STS2RitsuLib.Scaffolding.Characters
                 ArgumentNullException.ThrowIfNull(profile);
                 ArgumentNullException.ThrowIfNull(combatVisuals);
                 return profile with { CombatVisuals = combatVisuals };
+            }
+
+            /// <summary>
+            ///     Returns a copy with <see cref="CharacterAssetProfile.WorldProceduralVisuals" /> replaced.
+            /// </summary>
+            public CharacterAssetProfile WithWorldProceduralVisuals(CharacterWorldProceduralVisualSet worldVisuals)
+            {
+                ArgumentNullException.ThrowIfNull(profile);
+                ArgumentNullException.ThrowIfNull(worldVisuals);
+                return profile with { WorldProceduralVisuals = worldVisuals };
             }
         }
     }

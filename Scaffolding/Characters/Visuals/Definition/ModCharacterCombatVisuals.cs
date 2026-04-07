@@ -9,12 +9,17 @@ namespace STS2RitsuLib.Scaffolding.Characters.Visuals.Definition
         /// <summary>
         ///     Begins a <see cref="CharacterCombatVisualCueSet" /> builder.
         /// </summary>
-        public static CharacterCombatVisualCueSetBuilder CueSet() => CharacterCombatVisualCueSetBuilder.Create();
+        public static CharacterCombatVisualCueSetBuilder CueSet()
+        {
+            return CharacterCombatVisualCueSetBuilder.Create();
+        }
 
         /// <summary>
         ///     Begins a <see cref="CharacterVisualFrameSequence" /> builder.
         /// </summary>
-        public static CharacterVisualFrameSequenceBuilder FrameSequence() =>
-            CharacterVisualFrameSequenceBuilder.Create();
+        public static CharacterVisualFrameSequenceBuilder FrameSequence()
+        {
+            return CharacterVisualFrameSequenceBuilder.Create();
+        }
     }
 }

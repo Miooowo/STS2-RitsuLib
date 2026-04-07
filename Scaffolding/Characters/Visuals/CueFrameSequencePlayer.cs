@@ -10,15 +10,15 @@ namespace STS2RitsuLib.Scaffolding.Characters.Visuals
     internal partial class CueFrameSequencePlayer : Node
     {
         internal const string NodeName = "RitsuCueFrameSequencePlayer";
-
-        private Sprite2D? _sprite;
-        private CharacterVisualFrame[] _frames = [];
+        private bool _active;
         private Texture2D?[] _cache = [];
-        private int _index;
         private double _carry;
         private double _frameDurationSeconds;
+        private CharacterVisualFrame[] _frames = [];
+        private int _index;
         private bool _loop;
-        private bool _active;
+
+        private Sprite2D? _sprite;
 
         public override void _Ready()
         {
@@ -142,7 +142,7 @@ namespace STS2RitsuLib.Scaffolding.Characters.Visuals
 
         internal static void StopUnder(Node? parent)
         {
-            if (!GodotObject.IsInstanceValid(parent))
+            if (!IsInstanceValid(parent))
                 return;
 
             (parent!.GetNodeOrNull(NodeName) as CueFrameSequencePlayer)?.StopAndReset();

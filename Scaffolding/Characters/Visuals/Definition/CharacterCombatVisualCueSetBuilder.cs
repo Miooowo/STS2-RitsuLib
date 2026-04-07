@@ -1,6 +1,3 @@
-using System;
-using System.Collections.Generic;
-
 namespace STS2RitsuLib.Scaffolding.Characters.Visuals.Definition
 {
     /// <summary>
@@ -8,10 +5,10 @@ namespace STS2RitsuLib.Scaffolding.Characters.Visuals.Definition
     /// </summary>
     public sealed class CharacterCombatVisualCueSetBuilder
     {
-        private readonly Dictionary<string, string> _textures =
+        private readonly Dictionary<string, CharacterVisualFrameSequence> _sequences =
             new(StringComparer.OrdinalIgnoreCase);
 
-        private readonly Dictionary<string, CharacterVisualFrameSequence> _sequences =
+        private readonly Dictionary<string, string> _textures =
             new(StringComparer.OrdinalIgnoreCase);
 
         private CharacterCombatVisualCueSetBuilder()
@@ -21,7 +18,10 @@ namespace STS2RitsuLib.Scaffolding.Characters.Visuals.Definition
         /// <summary>
         ///     Starts a new cue set definition.
         /// </summary>
-        public static CharacterCombatVisualCueSetBuilder Create() => new();
+        public static CharacterCombatVisualCueSetBuilder Create()
+        {
+            return new();
+        }
 
         /// <summary>
         ///     Binds one static texture to a cue (e.g. <c>idle</c>, <c>die</c>). Removes a frame sequence for the same
@@ -68,7 +68,7 @@ namespace STS2RitsuLib.Scaffolding.Characters.Visuals.Definition
         /// </summary>
         public CharacterCombatVisualCueSet Build()
         {
-            return new CharacterCombatVisualCueSet(
+            return new(
                 _textures.Count > 0 ? _textures : null,
                 _sequences.Count > 0 ? _sequences : null);
         }

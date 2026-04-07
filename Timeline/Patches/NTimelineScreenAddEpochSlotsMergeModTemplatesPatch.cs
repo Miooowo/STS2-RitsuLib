@@ -61,10 +61,10 @@ namespace STS2RitsuLib.Timeline.Patches
             if (slotsToAdd.Count == 1 && slotsToAdd[0].Model.Id == EpochModel.GetId<NeowEpoch>())
                 return;
 
-            if (!ModTimelineNeowCoExpansion.TryConsumePendingNeowAnimatedSlotMerge())
+            if (!ModTimelineNeowCoExpansion.IsNeowPrimaryTimelineExpansionSlots(slotsToAdd))
                 return;
 
-            if (!ModTimelineNeowCoExpansion.IsNeowPrimaryTimelineExpansionSlots(slotsToAdd))
+            if (!ModTimelineNeowCoExpansion.TryConsumePendingNeowAnimatedSlotMerge())
                 return;
 
             ModTimelineNeowCoExpansion.MergeModEpochTemplateSlotsInto(slotsToAdd, progress);

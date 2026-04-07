@@ -56,10 +56,11 @@ namespace STS2RitsuLib.Scaffolding.Content
 
         /// <summary>
         ///     Registers <typeparamref name="TEpoch" /> on the story column, then optional slot configuration (pool defaults,
-        ///     gated lists, etc.). For <see cref="ModEpochTemplate" /> epochs you must call
+        ///     gated lists, etc.). For <see cref="ModEpochTemplate" /> epochs, timeline layout must be registered before freeze;
+        ///     when using this builder, the typical approach is to call
         ///     <see cref="EpochSlotBuilder{TEpoch}.TimelineSlot" /> or <see cref="EpochSlotBuilder{TEpoch}.AutoTimelineSlot" />
-        ///     inside <paramref name="slot" /> so placement is registered before freeze (conflicts with vanilla throw at apply
-        ///     time).
+        ///     inside <paramref name="slot" /> (or register elsewhere before freeze, e.g. ModContentPackBuilder ModEpoch*
+        ///     helpers), so apply-time validation can run (conflicts with vanilla throw at apply time).
         ///     Execution order matches call order; later <c>RequireEpoch</c> for the same model overrides earlier ones.
         /// </summary>
         public TimelineColumnBuilder<TStory> Epoch<TEpoch>(Action<EpochSlotBuilder<TEpoch>>? slot = null)

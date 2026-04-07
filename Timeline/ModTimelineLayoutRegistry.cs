@@ -68,6 +68,7 @@ namespace STS2RitsuLib.Timeline
         {
             ArgumentNullException.ThrowIfNull(epochType);
             ArgumentException.ThrowIfNullOrWhiteSpace(modId);
+            ThrowIfNotModEpochTemplate(epochType);
 
             lock (Sync)
             {
@@ -233,8 +234,8 @@ namespace STS2RitsuLib.Timeline
             throw new InvalidOperationException(
                 $"No timeline layout registered for mod epoch type '{epochType?.Name}'. " +
                 "Declare .TimelineSlot(era, position), .AutoTimelineSlot(era), .AutoTimelineSlotBeforeColumn / AfterColumn, " +
-                "or BeforeEpoch / AfterEpoch inside TimelineColumnPackEntry.Epoch<TEpoch>(...), " +
-                $"or call the matching {nameof(ModTimelineLayoutRegistry)} methods before freeze.");
+                "or AutoTimelineSlotBeforeEpochColumn / AutoTimelineSlotAfterEpochColumn inside TimelineColumnPackEntry.Epoch<TEpoch>(...), " +
+                $"or use ModContentPackBuilder ModEpoch* timeline helpers / matching {nameof(ModTimelineLayoutRegistry)} methods before freeze.");
         }
 
         internal static int ResolveEraPosition(Type epochType)

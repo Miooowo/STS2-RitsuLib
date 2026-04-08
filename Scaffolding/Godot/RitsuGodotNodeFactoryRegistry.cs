@@ -25,7 +25,9 @@ namespace STS2RitsuLib.Scaffolding.Godot
         internal static TNode CreateFromScene<TNode>(PackedScene scene) where TNode : Node, new()
         {
             if (!GodotObject.IsInstanceValid(scene))
-                throw new ArgumentNullException(nameof(scene));
+                throw new ArgumentException(
+                    "PackedScene is null or the native instance is invalid (freed).",
+                    nameof(scene));
 
             RequireMainThread(nameof(CreateFromScene));
             RitsuLibFramework.Logger.Info($"[Godot] Creating {typeof(TNode).Name} from scene {scene.ResourcePath}");
@@ -43,12 +45,20 @@ namespace STS2RitsuLib.Scaffolding.Godot
 
         internal static TNode CreateFromResource<TNode>(object resource) where TNode : Node, new()
         {
+            ArgumentNullException.ThrowIfNull(resource);
+
             RequireMainThread(nameof(CreateFromResource));
             if (!Factories.TryGetValue(typeof(TNode), out var factory))
                 throw new InvalidOperationException($"No node factory registered for {typeof(TNode).Name}");
 
             if (resource is string s && ResourceLoader.Exists(s))
-                resource = ResourceLoader.Load(s);
+            {
+                var loaded = ResourceLoader.Load(s);
+                if (loaded is null)
+                    throw new InvalidOperationException($"ResourceLoader.Load returned null for path: {s}");
+
+                resource = loaded;
+            }
 
             RitsuLibFramework.Logger.Info($"[Godot] Creating {typeof(TNode).Name} from {resource.GetType().Name}");
             var bare = factory.CreateBareFromResource(resource);

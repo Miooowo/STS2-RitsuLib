@@ -65,6 +65,7 @@ namespace STS2RitsuLib.Keywords
 
         internal static void FreezeRegistrations(string reason)
         {
+            ModKeywordRegistry[] registriesSnapshot;
             lock (SyncRoot)
             {
                 if (IsFrozen)
@@ -73,9 +74,11 @@ namespace STS2RitsuLib.Keywords
                 IsFrozen = true;
                 foreach (var registry in Registries.Values)
                     registry._freezeReason = reason;
+
+                registriesSnapshot = [.. Registries.Values];
             }
 
-            foreach (var registry in Registries.Values)
+            foreach (var registry in registriesSnapshot)
                 registry._logger.Info($"[Keywords] Keyword registration is now frozen ({reason}).");
         }
 

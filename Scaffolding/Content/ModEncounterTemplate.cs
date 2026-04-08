@@ -1,4 +1,6 @@
 using MegaCrit.Sts2.Core.Models;
+using MegaCrit.Sts2.Core.Random;
+using MegaCrit.Sts2.Core.Rooms;
 using STS2RitsuLib.Scaffolding.Content.Patches;
 
 namespace STS2RitsuLib.Scaffolding.Content
@@ -8,7 +10,9 @@ namespace STS2RitsuLib.Scaffolding.Content
     ///     encounter-specific backgrounds (main scene + <c>_bg_</c>/<c>_fg_</c> layers), boss map node path, optional map-node
     ///     preload list, and extra asset paths. Background pipeline matches vanilla
     ///     <c>EncounterModel.HasCustomBackground</c> semantics, with an explicit switch to keep using the act’s combat
-    ///     background when desired.
+    ///     background when desired. For disk-free backgrounds, set <see cref="UseProgrammaticCombatBackground" /> and
+    ///     implement <see cref="BuildProgrammaticCombatBackground" /> using <see cref="CombatBackgroundAssetsFactory" /> (or
+    ///     reuse <see cref="ActModel.GenerateBackgroundAssets" />).
     ///     <para />
     ///     <b>Registration:</b> act-only — <c>ModContentRegistry.RegisterActEncounter&lt;TAct, TEncounter&gt;()</c> or
     ///     <c>ModContentPackBuilder.ActEncounter&lt;TAct, TEncounter&gt;()</c>; all acts —
@@ -18,6 +22,8 @@ namespace STS2RitsuLib.Scaffolding.Content
     /// </summary>
     public abstract class ModEncounterTemplate : EncounterModel, IModEncounterAssetOverrides
     {
+        private BackgroundAssets? _programmaticCombatBackgroundSlot;
+
         /// <summary>
         ///     When <c>true</c> (default), this encounter uses the parent act’s
         ///     <see cref="MegaCrit.Sts2.Core.Models.ActModel.GenerateBackgroundAssets" />
@@ -28,11 +34,23 @@ namespace STS2RitsuLib.Scaffolding.Content
         /// </summary>
         protected virtual bool UseActCombatBackground => true;
 
+        /// <summary>
+        ///     When <c>true</c>, <see cref="BuildProgrammaticCombatBackground" /> supplies combat
+        ///     <see cref="BackgroundAssets" /> instead of loading <c>res://scenes/backgrounds/&lt;encounter-id&gt;/…</c>.
+        ///     Ignored when <see cref="IModEncounterAssetOverrides.CustomBackgroundScenePath" /> or
+        ///     <see cref="IModEncounterAssetOverrides.CustomBackgroundLayersDirectoryPath" /> resolves to a valid path
+        ///     (path-based custom background wins).
+        /// </summary>
+        protected virtual bool UseProgrammaticCombatBackground => false;
+
+        internal bool UsesProgrammaticCombatBackground => UseProgrammaticCombatBackground;
+
         /// <inheritdoc />
         protected override bool HasCustomBackground =>
             !UseActCombatBackground
             || !string.IsNullOrWhiteSpace(CustomBackgroundLayersDirectoryPath)
-            || !string.IsNullOrWhiteSpace(CustomBackgroundScenePath);
+            || !string.IsNullOrWhiteSpace(CustomBackgroundScenePath)
+            || UseProgrammaticCombatBackground;
 
         /// <inheritdoc />
         public override bool HasScene =>
@@ -58,5 +76,44 @@ namespace STS2RitsuLib.Scaffolding.Content
 
         /// <inheritdoc />
         public virtual IEnumerable<string>? CustomMapNodeAssetPaths => AssetProfile.MapNodeAssetPaths;
+
+        /// <summary>
+        ///     Build combat background assets when <see cref="UseProgrammaticCombatBackground" /> is <c>true</c>.
+        ///     Return <c>null</c> to fall back to vanilla disk layout (may throw if folders are missing). To reuse the act
+        ///     background, return <c>parentAct.GenerateBackgroundAssets(rng)</c>.
+        /// </summary>
+        protected virtual BackgroundAssets? BuildProgrammaticCombatBackground(ActModel parentAct, Rng rng)
+        {
+            return null;
+        }
+
+        internal void PrepareProgrammaticCombatBackground(ActModel parentAct, Rng rng)
+        {
+            _programmaticCombatBackgroundSlot = null;
+            if (!UseProgrammaticCombatBackground)
+                return;
+
+            try
+            {
+                _programmaticCombatBackgroundSlot = BuildProgrammaticCombatBackground(parentAct, rng);
+            }
+            catch (Exception ex)
+            {
+                RitsuLibFramework.Logger.Warn(
+                    $"[Assets] Mod encounter '{Id.Entry}' programmatic combat background failed ({ex.GetType().Name}: {ex.Message}).");
+            }
+        }
+
+        internal void AbandonProgrammaticCombatBackgroundSlot()
+        {
+            _programmaticCombatBackgroundSlot = null;
+        }
+
+        internal BackgroundAssets? ConsumeProgrammaticCombatBackgroundSlot()
+        {
+            var slot = _programmaticCombatBackgroundSlot;
+            _programmaticCombatBackgroundSlot = null;
+            return slot;
+        }
     }
 }

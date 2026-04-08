@@ -51,6 +51,17 @@ namespace STS2RitsuLib.Scaffolding.Content.Patches
         ///     When non-null and non-empty after filtering to existing resources, replaces <c>MapNodeAssetPaths</c>.
         /// </summary>
         IEnumerable<string>? CustomMapNodeAssetPaths => AssetProfile.MapNodeAssetPaths;
+
+        /// <summary>
+        ///     When set and the resource exists, overrides <see cref="ImageHelper.GetRoomIconPath" /> for this encounter id.
+        /// </summary>
+        string? CustomRunHistoryIconPath => AssetProfile.RunHistoryIconPath;
+
+        /// <summary>
+        ///     When set and the resource exists, overrides <see cref="ImageHelper.GetRoomIconOutlinePath" /> for this encounter
+        ///     id.
+        /// </summary>
+        string? CustomRunHistoryIconOutlinePath => AssetProfile.RunHistoryIconOutlinePath;
     }
 
     /// <summary>
@@ -270,7 +281,8 @@ namespace STS2RitsuLib.Scaffolding.Content.Patches
         public static string PatchId => "content_asset_override_encounter_get_asset_paths";
 
         /// <inheritdoc cref="IPatchMethod.Description" />
-        public static string Description => "Merge mod encounter scene, extras, and layer scenes into GetAssetPaths";
+        public static string Description =>
+            "Merge mod encounter scene, extras, and layer scenes into GetAssetPaths; omit synthetic encounters/<modId> preload when using borrowed or factory scenes";
 
         /// <inheritdoc cref="IPatchMethod.IsCritical" />
         public static bool IsCritical => false;
@@ -292,6 +304,15 @@ namespace STS2RitsuLib.Scaffolding.Content.Patches
 
             if (__instance is not IModEncounterAssetOverrides overrides)
                 return;
+
+            var syntheticEncounterScene =
+                SceneHelper.GetScenePath($"encounters/{__instance.Id.Entry.ToLowerInvariant()}");
+            var customScene = overrides.CustomEncounterScenePath;
+            var customSceneOk = !string.IsNullOrWhiteSpace(customScene) && ResourceLoader.Exists(customScene);
+            var factoryOnly =
+                (__instance as IModEncounterCombatSceneFactory)?.SuppliesEncounterCombatSceneFromFactory == true;
+            if ((customSceneOk && !ResPathEquals(syntheticEncounterScene, customScene!)) || factoryOnly)
+                __result = __result.Where(p => !ResPathEquals(p, syntheticEncounterScene)).ToList();
 
             var extras = new List<string>();
 
@@ -329,6 +350,11 @@ namespace STS2RitsuLib.Scaffolding.Content.Patches
                 return;
 
             __result = __result.Concat(extras);
+        }
+
+        private static bool ResPathEquals(string a, string b)
+        {
+            return string.Equals(a.TrimEnd('/'), b.TrimEnd('/'), StringComparison.OrdinalIgnoreCase);
         }
     }
 }

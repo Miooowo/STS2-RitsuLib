@@ -1,3 +1,4 @@
+using MegaCrit.Sts2.Core.Helpers;
 using MegaCrit.Sts2.Core.Models;
 using MegaCrit.Sts2.Core.Timeline;
 using STS2RitsuLib.Combat.HealthBars;
@@ -418,8 +419,41 @@ namespace STS2RitsuLib.Scaffolding.Content
         }
 
         /// <summary>
+        ///     Queues <c>ModKeywordRegistry.RegisterCardKeywordOwned</c> (mod-local stem → qualified id).
+        /// </summary>
+        public ModContentPackBuilder CardKeywordOwned(
+            string localKeywordStem,
+            string? locKeyPrefix,
+            string? iconPath,
+            ModKeywordCardDescriptionPlacement cardDescriptionPlacement,
+            bool includeInCardHoverTip)
+        {
+            return AddStep(ctx =>
+                ctx.Keywords.RegisterCardKeywordOwned(localKeywordStem, locKeyPrefix, iconPath,
+                    cardDescriptionPlacement, includeInCardHoverTip));
+        }
+
+        /// <summary>
+        ///     Queues <c>ModKeywordRegistry.RegisterCardKeywordOwned</c> with legacy hover defaults.
+        /// </summary>
+        public ModContentPackBuilder CardKeywordOwned(
+            string localKeywordStem,
+            string? locKeyPrefix = null,
+            string? iconPath = null)
+        {
+            return CardKeywordOwned(
+                localKeywordStem,
+                locKeyPrefix,
+                iconPath,
+                ModKeywordCardDescriptionPlacement.None,
+                true);
+        }
+
+        /// <summary>
         ///     Queues extended <see cref="ModKeywordRegistry" /> card-keyword registration (placement + hover-tip flags).
         /// </summary>
+        [Obsolete(
+            "Prefer CardKeywordOwned(localKeywordStem, ...) so the keyword id is mod-qualified; flat ids collide globally.")]
         public ModContentPackBuilder CardKeyword(
             string id,
             string? locKeyPrefix,
@@ -428,13 +462,29 @@ namespace STS2RitsuLib.Scaffolding.Content
             bool includeInCardHoverTip)
         {
             return AddStep(ctx =>
-                ctx.Keywords.RegisterCardKeyword(id, locKeyPrefix, iconPath, cardDescriptionPlacement,
-                    includeInCardHoverTip));
+            {
+                ArgumentException.ThrowIfNullOrWhiteSpace(id);
+                var prefix = string.IsNullOrWhiteSpace(locKeyPrefix)
+                    ? StringHelper.Slugify(id)
+                    : locKeyPrefix.Trim();
+
+                ctx.Keywords.RegisterCore(
+                    id,
+                    "card_keywords",
+                    $"{prefix}.title",
+                    "card_keywords",
+                    $"{prefix}.description",
+                    iconPath,
+                    cardDescriptionPlacement,
+                    includeInCardHoverTip);
+            });
         }
 
         /// <summary>
         ///     Legacy <c>CardKeyword</c> signature preserved for older mods; forwards with prior hover-tip behavior.
         /// </summary>
+        [Obsolete(
+            "Prefer CardKeywordOwned(localKeywordStem, ...) so the keyword id is mod-qualified; flat ids collide globally.")]
         public ModContentPackBuilder CardKeyword(string id, string? locKeyPrefix = null, string? iconPath = null)
         {
             return CardKeyword(
@@ -446,8 +496,50 @@ namespace STS2RitsuLib.Scaffolding.Content
         }
 
         /// <summary>
+        ///     Queues <c>ModKeywordRegistry.RegisterOwned</c> (mod-local stem → qualified id).
+        /// </summary>
+        public ModContentPackBuilder KeywordOwned(
+            string localKeywordStem,
+            string titleTable,
+            string? titleKey,
+            string? descriptionTable,
+            string? descriptionKey,
+            string? iconPath,
+            ModKeywordCardDescriptionPlacement cardDescriptionPlacement,
+            bool includeInCardHoverTip)
+        {
+            return AddStep(ctx =>
+                ctx.Keywords.RegisterOwned(localKeywordStem, titleTable, titleKey, descriptionTable, descriptionKey,
+                    iconPath, cardDescriptionPlacement, includeInCardHoverTip));
+        }
+
+        /// <summary>
+        ///     Queues <c>ModKeywordRegistry.RegisterOwned</c> with legacy hover defaults.
+        /// </summary>
+        public ModContentPackBuilder KeywordOwned(
+            string localKeywordStem,
+            string titleTable = "card_keywords",
+            string? titleKey = null,
+            string? descriptionTable = null,
+            string? descriptionKey = null,
+            string? iconPath = null)
+        {
+            return KeywordOwned(
+                localKeywordStem,
+                titleTable,
+                titleKey,
+                descriptionTable,
+                descriptionKey,
+                iconPath,
+                ModKeywordCardDescriptionPlacement.None,
+                true);
+        }
+
+        /// <summary>
         ///     Queues extended <see cref="ModKeywordRegistry" /> keyword registration (placement + hover-tip flags).
         /// </summary>
+        [Obsolete(
+            "Prefer KeywordOwned(localKeywordStem, ...) so the keyword id is mod-qualified; flat ids collide globally.")]
         public ModContentPackBuilder Keyword(
             string id,
             string titleTable,
@@ -459,13 +551,15 @@ namespace STS2RitsuLib.Scaffolding.Content
             bool includeInCardHoverTip)
         {
             return AddStep(ctx =>
-                ctx.Keywords.Register(id, titleTable, titleKey, descriptionTable, descriptionKey, iconPath,
+                ctx.Keywords.RegisterCore(id, titleTable, titleKey, descriptionTable, descriptionKey, iconPath,
                     cardDescriptionPlacement, includeInCardHoverTip));
         }
 
         /// <summary>
         ///     Legacy <c>Keyword</c> signature preserved for older mods; forwards with prior hover-tip behavior.
         /// </summary>
+        [Obsolete(
+            "Prefer KeywordOwned(localKeywordStem, ...) so the keyword id is mod-qualified; flat ids collide globally.")]
         public ModContentPackBuilder Keyword(
             string id,
             string titleTable = "card_keywords",

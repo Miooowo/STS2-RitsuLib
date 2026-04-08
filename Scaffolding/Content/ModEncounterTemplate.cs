@@ -27,12 +27,11 @@ namespace STS2RitsuLib.Scaffolding.Content
         private BackgroundAssets? _programmaticCombatBackgroundSlot;
 
         /// <summary>
-        ///     When <c>true</c> (default), this encounter uses the parent act’s
-        ///     <see cref="MegaCrit.Sts2.Core.Models.ActModel.GenerateBackgroundAssets" />
-        ///     unless you set <see cref="CustomBackgroundScenePath" /> / <see cref="CustomBackgroundLayersDirectoryPath" /> in
-        ///     <see cref="AssetProfile" />.
-        ///     When <c>false</c>, this encounter always uses the encounter-specific background tree
-        ///     (<c>res://scenes/backgrounds/&lt;id&gt;/…</c>), like vanilla <c>HasCustomBackground</c>.
+        ///     When <c>true</c> (default), combat background comes from the parent act’s
+        ///     <see cref="MegaCrit.Sts2.Core.Models.ActModel.GenerateBackgroundAssets" />; profile paths from
+        ///     <see cref="ContentAssetProfiles.Encounter(string, string?, string?)" /> are ignored for background selection (they
+        ///     still preload encounter scenes / map art where applicable). When <c>false</c>, use encounter-specific layers / main
+        ///     scene from <see cref="AssetProfile" />, like vanilla <c>HasCustomBackground</c>.
         /// </summary>
         protected virtual bool UseActCombatBackground => true;
 
@@ -49,16 +48,17 @@ namespace STS2RitsuLib.Scaffolding.Content
 
         /// <inheritdoc />
         protected override bool HasCustomBackground =>
-            !UseActCombatBackground
-            || !string.IsNullOrWhiteSpace(CustomBackgroundLayersDirectoryPath)
-            || !string.IsNullOrWhiteSpace(CustomBackgroundScenePath)
-            || UseProgrammaticCombatBackground;
+            UseProgrammaticCombatBackground
+            || (!UseActCombatBackground && (
+                !string.IsNullOrWhiteSpace(CustomBackgroundLayersDirectoryPath)
+                || !string.IsNullOrWhiteSpace(CustomBackgroundScenePath)));
 
         /// <inheritdoc />
         public override bool HasScene =>
             base.HasScene
-            || !string.IsNullOrWhiteSpace(CustomEncounterScenePath)
-            || SuppliesEncounterCombatSceneFromFactory;
+            || SuppliesEncounterCombatSceneFromFactory
+            || (!string.IsNullOrWhiteSpace(CustomEncounterScenePath)
+                && ResourceLoader.Exists(CustomEncounterScenePath));
 
         /// <summary>
         ///     <c>true</c> when <see cref="HasScene" /> should be true without <see cref="CustomEncounterScenePath" />.

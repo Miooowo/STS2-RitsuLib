@@ -1,5 +1,4 @@
 using System.Reflection;
-using System.Threading;
 using MegaCrit.Sts2.Core.Entities.Ascension;
 using MegaCrit.Sts2.Core.Models;
 using MegaCrit.Sts2.Core.Multiplayer.Game;
@@ -31,11 +30,15 @@ namespace STS2RitsuLib.Content
         ///     <see cref="MapSelectionSynchronizer.BeforeMapGenerated" /> once so multiplayer map votes match the layout after
         ///     act-enter replacement (same idea as custom-act transitions in community mods).
         /// </summary>
-        internal static void RequestActEnterPostMapUiMapSyncBump() =>
+        internal static void RequestActEnterPostMapUiMapSyncBump()
+        {
             Interlocked.Exchange(ref _actEnterPostMapUiMapSyncBumpPending, 1);
+        }
 
-        internal static bool TryConsumeActEnterPostMapUiMapSyncBump() =>
-            Interlocked.Exchange(ref _actEnterPostMapUiMapSyncBumpPending, 0) != 0;
+        internal static bool TryConsumeActEnterPostMapUiMapSyncBump()
+        {
+            return Interlocked.Exchange(ref _actEnterPostMapUiMapSyncBumpPending, 0) != 0;
+        }
 
         private static Action<RunState, IReadOnlyList<ActModel>> CreateRunStateActsSetter()
         {
@@ -283,13 +286,11 @@ namespace STS2RitsuLib.Content
             if (runManager.ShouldApplyTutorialModifications())
                 act.ApplyDiscoveryOrderModifications(runState.UnlockState);
 
-            if (actIndex == runState.Acts.Count - 1 &&
-                runManager.AscensionManager.HasLevel(AscensionLevel.DoubleBoss))
-            {
-                var secondBoss = runState.Rng.UpFront.NextItem(
-                    act.AllBossEncounters.Where(e => e.Id != act.BossEncounter.Id));
-                act.SetSecondBossEncounter(secondBoss);
-            }
+            if (actIndex != runState.Acts.Count - 1 ||
+                !runManager.AscensionManager.HasLevel(AscensionLevel.DoubleBoss)) return;
+            var secondBoss = runState.Rng.UpFront.NextItem(
+                act.AllBossEncounters.Where(e => e.Id != act.BossEncounter.Id));
+            act.SetSecondBossEncounter(secondBoss);
         }
 
         private static void ApplyUniformPool(RunManager runManager, RunState runState, int slotIndex,

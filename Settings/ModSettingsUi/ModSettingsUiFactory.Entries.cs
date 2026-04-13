@@ -185,7 +185,9 @@ namespace STS2RitsuLib.Settings
                     entry.Binding.Write(value ?? string.Empty);
                     context.MarkDirty(entry.Binding);
                     context.RequestRefresh();
-                });
+                },
+                entry.EditAlpha,
+                entry.EditIntensity);
             RegisterRefreshWhenAlive(context, control, () => control.SetValue(entry.Binding.Read()));
 
             return CreateSettingLine(
@@ -204,7 +206,8 @@ namespace STS2RitsuLib.Settings
                 entry.Binding.Read(),
                 placeholder,
                 entry.MaxLength,
-                CreateStringFieldCommitHandler(context, entry));
+                CreateStringFieldCommitHandler(context, entry),
+                entry.ValueValidationVisual);
             RegisterRefreshWhenAlive(context, control, () => control.SetValue(entry.Binding.Read()));
 
             return CreateSettingLine(

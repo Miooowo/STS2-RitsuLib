@@ -9,8 +9,11 @@ namespace STS2RitsuLib.Settings
     {
         private readonly int? _maxLength;
         private readonly Action<string>? _onChanged;
+        private readonly Func<string, bool>? _validationVisual;
         private string _lastCommitted = string.Empty;
         private bool _suppressCallbacks;
+        private StyleBoxFlat? _validationInvalidStyle;
+        private StyleBoxFlat? _validationNeutralStyle;
 
         /// <summary>
         ///     Creates a single-line string editor.
@@ -21,9 +24,27 @@ namespace STS2RitsuLib.Settings
         /// <param name="onChanged">Callback invoked after the committed value changes.</param>
         public ModSettingsStringLineControl(string? initialValue, string? placeholder, int? maxLength,
             Action<string> onChanged)
+            : this(initialValue, placeholder, maxLength, onChanged, null)
+        {
+        }
+
+        /// <summary>
+        ///     Creates a single-line string editor with optional validation chrome (e.g. red border when the predicate
+        ///     returns <see langword="false" />).
+        /// </summary>
+        /// <param name="initialValue">The initial text value.</param>
+        /// <param name="placeholder">Placeholder text shown when the field is empty.</param>
+        /// <param name="maxLength">Optional maximum text length.</param>
+        /// <param name="onChanged">Callback invoked after the committed value changes.</param>
+        /// <param name="validationVisual">
+        ///     When non-null, invoked for the current text to choose normal vs. error styling; commits are not blocked.
+        /// </param>
+        public ModSettingsStringLineControl(string? initialValue, string? placeholder, int? maxLength,
+            Action<string> onChanged, Func<string, bool>? validationVisual)
         {
             _onChanged = onChanged;
             _maxLength = maxLength;
+            _validationVisual = validationVisual;
             _lastCommitted = ModSettingsStringEditorShared.ClampToMaxLength(initialValue ?? string.Empty, maxLength);
 
             SizeFlagsHorizontal = SizeFlags.ShrinkEnd;
@@ -56,6 +77,7 @@ namespace STS2RitsuLib.Settings
             AddChild(edit);
             ModSettingsFocusChrome.AttachControllerSelectionReticle(edit);
             Editor = edit;
+            ApplyValidationChrome(_lastCommitted);
         }
 
         /// <summary>
@@ -87,6 +109,7 @@ namespace STS2RitsuLib.Settings
             Editor.Text = v;
             _lastCommitted = v;
             _suppressCallbacks = false;
+            ApplyValidationChrome(v);
         }
 
         private void OnLineEditTextChanged(string newText)
@@ -103,10 +126,59 @@ namespace STS2RitsuLib.Settings
 
             var t = ModSettingsStringEditorShared.ClampToMaxLength(text ?? string.Empty, _maxLength);
             if (t == _lastCommitted)
+            {
+                ApplyValidationChrome(Editor?.Text ?? t);
                 return;
+            }
 
             _lastCommitted = t;
             _onChanged?.Invoke(t);
+            ApplyValidationChrome(t);
+        }
+
+        private void ApplyValidationChrome(string text)
+        {
+            if (_validationVisual == null || Editor == null)
+                return;
+
+            bool ok;
+            try
+            {
+                ok = _validationVisual(text);
+            }
+            catch
+            {
+                ok = false;
+            }
+
+            _validationNeutralStyle ??= new()
+            {
+                BgColor = new(0.15f, 0.15f, 0.15f),
+                BorderColor = new(0.3f, 0.3f, 0.3f),
+                BorderWidthBottom = 1,
+                BorderWidthTop = 1,
+                BorderWidthLeft = 1,
+                BorderWidthRight = 1,
+                CornerRadiusTopLeft = 3,
+                CornerRadiusTopRight = 3,
+                CornerRadiusBottomLeft = 3,
+                CornerRadiusBottomRight = 3,
+            };
+            _validationInvalidStyle ??= new()
+            {
+                BgColor = new(0.2f, 0.1f, 0.1f),
+                BorderColor = new(0.8f, 0.3f, 0.3f),
+                BorderWidthBottom = 2,
+                BorderWidthTop = 2,
+                BorderWidthLeft = 2,
+                BorderWidthRight = 2,
+                CornerRadiusTopLeft = 3,
+                CornerRadiusTopRight = 3,
+                CornerRadiusBottomLeft = 3,
+                CornerRadiusBottomRight = 3,
+            };
+
+            Editor.AddThemeStyleboxOverride("normal", ok ? _validationNeutralStyle : _validationInvalidStyle);
         }
     }
 

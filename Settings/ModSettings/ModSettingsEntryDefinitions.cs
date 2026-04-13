@@ -275,17 +275,53 @@ namespace STS2RitsuLib.Settings
     /// <summary>
     ///     Color picker bound to a string (e.g. hex or engine serialization).
     /// </summary>
-    public sealed class ColorModSettingsEntryDefinition(
-        string id,
-        ModSettingsText label,
-        IModSettingsValueBinding<string> binding,
-        ModSettingsText? description)
-        : ModSettingsEntryDefinition(id, label, description)
+    public sealed class ColorModSettingsEntryDefinition : ModSettingsEntryDefinition
     {
+        /// <summary>
+        ///     保留旧版四参数构造函数以维持二进制兼容；等价于 <c>EditAlpha=true</c>、<c>EditIntensity=false</c>。
+        /// </summary>
+        public ColorModSettingsEntryDefinition(
+            string id,
+            ModSettingsText label,
+            IModSettingsValueBinding<string> binding,
+            ModSettingsText? description)
+            : this(id, label, binding, description, true, false)
+        {
+        }
+
+        /// <summary>
+        ///     完整构造函数（含拾色器选项）。
+        /// </summary>
+        public ColorModSettingsEntryDefinition(
+            string id,
+            ModSettingsText label,
+            IModSettingsValueBinding<string> binding,
+            ModSettingsText? description,
+            bool editAlpha,
+            bool editIntensity)
+            : base(id, label, description)
+        {
+            Binding = binding;
+            EditAlpha = editAlpha;
+            EditIntensity = editIntensity;
+        }
+
         /// <summary>
         ///     Backing binding for the color string.
         /// </summary>
-        public IModSettingsValueBinding<string> Binding { get; } = binding;
+        public IModSettingsValueBinding<string> Binding { get; }
+
+        /// <summary>
+        ///     When false, the picker does not expose the alpha channel (matches BaseLib
+        ///     <c>[ConfigColorPicker(EditAlpha=false)]</c>).
+        /// </summary>
+        public bool EditAlpha { get; }
+
+        /// <summary>
+        ///     When true, enables HDR / intensity editing on the Godot picker (BaseLib only applies this for
+        ///     <see cref="Godot.Color" /> properties).
+        /// </summary>
+        public bool EditIntensity { get; }
 
         internal override void CollectChromeBindingSnapshots(
             Dictionary<string, ModSettingsChromeBindingSnapshot> target)
@@ -366,6 +402,12 @@ namespace STS2RitsuLib.Settings
         ModSettingsText? description)
         : StringFieldModSettingsEntryDefinition(id, label, binding, placeholder, maxLength, description)
     {
+        /// <summary>
+        ///     Optional visual validation for the current text (e.g. red border when <see langword="false" />).
+        ///     Does not block commits; mirrors optional ModConfig TextInput <c>Validator</c> styling.
+        /// </summary>
+        public Func<string, bool>? ValueValidationVisual { get; init; }
+
         internal override Control CreateControl(ModSettingsUiContext context)
         {
             return ModSettingsUiFactory.CreateStringLineEntry(context, this);

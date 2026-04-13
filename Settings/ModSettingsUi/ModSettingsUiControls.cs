@@ -1231,11 +1231,24 @@ namespace STS2RitsuLib.Settings
         private Color _unsetPreviewColor = new(1f, 215f / 255f, 64f / 255f);
 
         /// <summary>
-        ///     Creates a color editor.
+        ///     Creates a color editor. 保留旧版两参数构造函数以维持 ABI 兼容。
         /// </summary>
-        /// <param name="initialValue">The initial hex color, or null/empty to leave the value unset.</param>
+        /// <param name="initialValue">The initial color string (hex, HTML, or BaseLib <c>[r,g,b,a]</c>), or null/empty.</param>
         /// <param name="onChanged">Callback invoked after the committed color value changes.</param>
         public ModSettingsColorControl(string? initialValue, Action<string?> onChanged)
+            : this(initialValue, onChanged, true, false)
+        {
+        }
+
+        /// <summary>
+        ///     Creates a color editor with picker options.
+        /// </summary>
+        /// <param name="initialValue">The initial color string (hex, HTML, or BaseLib <c>[r,g,b,a]</c>), or null/empty.</param>
+        /// <param name="onChanged">Callback invoked after the committed color value changes.</param>
+        /// <param name="editAlpha">Whether the swatch popup exposes alpha editing.</param>
+        /// <param name="editIntensity">Whether the popup exposes intensity (HDR) editing.</param>
+        public ModSettingsColorControl(string? initialValue, Action<string?> onChanged, bool editAlpha,
+            bool editIntensity)
         {
             _onChanged = onChanged;
 
@@ -1252,7 +1265,7 @@ namespace STS2RitsuLib.Settings
                 SizeFlagsVertical = SizeFlags.ShrinkCenter,
                 MouseFilter = MouseFilterEnum.Stop,
                 FocusMode = FocusModeEnum.All,
-                EditAlpha = true,
+                EditAlpha = editAlpha,
             };
             ModSettingsUiControlTheming.ApplyColorPickerSwatchButtonChrome(pickerButton);
             AddChild(pickerButton);
@@ -1260,7 +1273,7 @@ namespace STS2RitsuLib.Settings
 
             var hexEdit = new LineEdit
             {
-                PlaceholderText = "#RRGGBBAA",
+                PlaceholderText = editAlpha ? "#RRGGBBAA" : "#RRGGBB",
                 SelectAllOnFocus = true,
                 Alignment = HorizontalAlignment.Center,
                 CustomMinimumSize = new(0f, ModSettingsUiMetrics.SliderValueFieldHeight),
@@ -1273,7 +1286,8 @@ namespace STS2RitsuLib.Settings
 
             if (pickerButton.GetPicker() is { } picker)
             {
-                picker.EditAlpha = true;
+                picker.EditAlpha = editAlpha;
+                picker.EditIntensity = editIntensity;
                 picker.PresetsVisible = true;
                 picker.SamplerVisible = true;
                 picker.DeferredMode = false;
@@ -1293,6 +1307,40 @@ namespace STS2RitsuLib.Settings
         ///     Current hex text shown by the editor, or an empty string when the color is unset.
         /// </summary>
         public string ValueText => _hexEdit?.Text ?? _lastCommitted;
+
+        /// <summary>
+        ///     Serializes <paramref name="color" /> as an 8-digit hex string for settings storage / display.
+        /// </summary>
+        public static string FormatStoredColorString(Color color)
+        {
+            return FormatColorValue(color);
+        }
+
+        /// <summary>
+        ///     Parses hex, Godot HTML, or BaseLib-style <c>[r, g, b, a]</c> component lists (invariant floats).
+        /// </summary>
+        public static bool TryDeserializeColorForSettings(string? text, out Color color)
+        {
+            color = default;
+            if (string.IsNullOrWhiteSpace(text))
+                return false;
+
+            var trimmed = text.Trim();
+            if (TryParseHexColorString(trimmed, out color))
+                return true;
+
+            try
+            {
+                color = Color.FromHtml(trimmed);
+                return true;
+            }
+            catch
+            {
+                // ignored
+            }
+
+            return TryParseBracketRgbaColor(trimmed, out color);
+        }
 
         /// <summary>
         ///     Wires editor events after the control enters the scene tree.
@@ -1334,7 +1382,7 @@ namespace STS2RitsuLib.Settings
                 return;
             }
 
-            if (!TryParseColor(trimmed, out var color))
+            if (!TryDeserializeColorForSettings(trimmed, out var color))
             {
                 RestoreCurrentPresentation();
                 return;
@@ -1363,7 +1411,7 @@ namespace STS2RitsuLib.Settings
             if (_suppressCallbacks)
                 return;
 
-            var formatted = FormatColor(color);
+            var formatted = FormatColorValue(color);
             _suppressCallbacks = true;
             _pickerButton?.Set("color", color);
             _hexEdit?.Set("text", formatted);
@@ -1384,7 +1432,7 @@ namespace STS2RitsuLib.Settings
         {
             _pickerChangedWhileOpen = true;
             ApplyColor(color, false);
-            _onChanged?.Invoke(FormatColor(color));
+            _onChanged?.Invoke(FormatColorValue(color));
         }
 
         private void OnPickerPopupClosed()
@@ -1393,7 +1441,7 @@ namespace STS2RitsuLib.Settings
             _pickerButton?.ReleaseFocus();
         }
 
-        private static bool TryParseColor(string text, out Color color)
+        private static bool TryParseHexColorString(string text, out Color color)
         {
             var trimmed = text.Trim();
             if (string.IsNullOrWhiteSpace(trimmed))
@@ -1425,7 +1473,31 @@ namespace STS2RitsuLib.Settings
             return true;
         }
 
-        private static string FormatColor(Color color)
+        private static bool TryParseBracketRgbaColor(string text, out Color color)
+        {
+            color = default;
+            var s = text.Trim();
+            if (s.Length < 7)
+                return false;
+
+            s = s.Trim('[', ']');
+            var parts = s.Split(',');
+            if (parts.Length != 4)
+                return false;
+
+            if (float.TryParse(parts[0], NumberStyles.Float, CultureInfo.InvariantCulture, out var r) &&
+                float.TryParse(parts[1], NumberStyles.Float, CultureInfo.InvariantCulture, out var g) &&
+                float.TryParse(parts[2], NumberStyles.Float, CultureInfo.InvariantCulture, out var b) &&
+                float.TryParse(parts[3], NumberStyles.Float, CultureInfo.InvariantCulture, out var a))
+            {
+                color = new(r, g, b, a);
+                return true;
+            }
+
+            return false;
+        }
+
+        private static string FormatColorValue(Color color)
         {
             return
                 $"#{Mathf.RoundToInt(color.R * 255f):X2}{Mathf.RoundToInt(color.G * 255f):X2}{Mathf.RoundToInt(color.B * 255f):X2}{Mathf.RoundToInt(color.A * 255f):X2}";

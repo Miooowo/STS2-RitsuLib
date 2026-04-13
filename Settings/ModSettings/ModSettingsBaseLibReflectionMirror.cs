@@ -22,6 +22,7 @@ namespace STS2RitsuLib.Settings
         private const string SliderRangeAttributeName = "BaseLib.Config.SliderRangeAttribute";
         private const string SliderLabelFormatAttributeName = "BaseLib.Config.SliderLabelFormatAttribute";
         private const string ConfigTextInputAttributeName = "BaseLib.Config.ConfigTextInputAttribute";
+        private const string ConfigColorPickerAttributeName = "BaseLib.Config.ConfigColorPickerAttribute";
         private const string ConfigHoverTipAttributeName = "BaseLib.Config.ConfigHoverTipAttribute";
         private const string HoverTipsByDefaultAttributeName = "BaseLib.Config.HoverTipsByDefaultAttribute";
 
@@ -35,7 +36,8 @@ namespace STS2RitsuLib.Settings
 
         /// <summary>
         ///     Registers one RitsuLib settings page per BaseLib registry entry, approximating <c>SimpleModConfig</c>
-        ///     layout (sections, bool / double / string / enum, and <c>[ConfigButton]</c> methods). Returns the number
+        ///     layout (sections, bool / int / float / double / string / color / enum, and <c>[ConfigButton]</c> methods).
+        ///     Returns the number
         ///     of pages registered. Subsequent calls are ignored until the process restarts.
         /// </summary>
         /// <param name="pageId">Stable page id under each mod (default <c>baselib</c>).</param>
@@ -94,6 +96,7 @@ namespace STS2RitsuLib.Settings
                 var sliderRangeType = ResolveType(SliderRangeAttributeName);
                 var sliderFormatType = ResolveType(SliderLabelFormatAttributeName);
                 var textInputAttrType = ResolveType(ConfigTextInputAttributeName);
+                var colorPickerAttrType = ResolveType(ConfigColorPickerAttributeName);
                 var hoverTipAttrType = ResolveType(ConfigHoverTipAttributeName);
                 var hoverTipsByDefaultAttrType = ResolveType(HoverTipsByDefaultAttributeName);
 
@@ -121,6 +124,7 @@ namespace STS2RitsuLib.Settings
                     if (!TryBuildPage(modId, pageId, sortOrder, pageTitle, pageDescription, host, configProps,
                             sectionAttrType,
                             hideUiAttrType, buttonAttrType, sliderRangeType, sliderFormatType, textInputAttrType,
+                            colorPickerAttrType,
                             hoverTipAttrType,
                             hoverTipsByDefaultAttrType,
                             config.GetType()))
@@ -150,6 +154,7 @@ namespace STS2RitsuLib.Settings
             Type? sliderRangeType,
             Type? sliderFormatType,
             Type? textInputAttrType,
+            Type? colorPickerAttrType,
             Type? hoverTipAttrType,
             Type? hoverTipsByDefaultAttrType,
             Type configConcreteType)
@@ -221,7 +226,7 @@ namespace STS2RitsuLib.Settings
                                 {
                                     case PropertyInfo prop:
                                         AppendPropertyEntry(section, modId, prop, host, sliderRangeType,
-                                            sliderFormatType, textInputAttrType, hoverTipAttrType,
+                                            sliderFormatType, textInputAttrType, colorPickerAttrType, hoverTipAttrType,
                                             hoverTipsByDefaultAttrType, configConcreteType);
                                         break;
                                     case MethodInfo method:
@@ -262,6 +267,7 @@ namespace STS2RitsuLib.Settings
             Type? sliderRangeType,
             Type? sliderFormatType,
             Type? textInputAttrType,
+            Type? colorPickerAttrType,
             Type? hoverTipAttrType,
             Type? hoverTipsByDefaultAttrType,
             Type configConcreteType)
@@ -280,30 +286,32 @@ namespace STS2RitsuLib.Settings
                 return;
             }
 
-            if (pt == typeof(double))
+            if (pt == typeof(Color))
             {
-                var binding = CallbackForStaticProperty<double>(modId, dataKey, prop, host);
-                var min = 0d;
-                var max = 1d;
-                var step = 0.01d;
-                if (sliderRangeType != null &&
-                    prop.GetCustomAttribute(sliderRangeType) is { } rangeAttr)
-                {
-                    min = (double)(rangeAttr.GetType().GetProperty("Min")?.GetValue(rangeAttr) ?? 0.0);
-                    max = (double)(rangeAttr.GetType().GetProperty("Max")?.GetValue(rangeAttr) ?? 1.0);
-                    step = (double)(rangeAttr.GetType().GetProperty("Step")?.GetValue(rangeAttr) ?? 0.01);
-                }
+                var (editAlpha, editIntensity) =
+                    ResolveConfigColorPickerUiOptions(prop, colorPickerAttrType, typeof(Color));
+                var binding = ModSettingsBindings.Callback(modId, dataKey,
+                    () => ModSettingsColorControl.FormatStoredColorString((Color)prop.GetValue(null)!),
+                    v =>
+                    {
+                        if (string.IsNullOrWhiteSpace(v) ||
+                            !ModSettingsColorControl.TryDeserializeColorForSettings(v, out var c))
+                            return;
+                        prop.SetValue(null, c);
+                        host.NotifyChanged();
+                    },
+                    host.Save);
+                section.AddColor(id, label, binding, hoverTipDescription, editAlpha, editIntensity);
+                return;
+            }
 
-                Func<double, string>? fmt = null;
-                if (sliderFormatType != null &&
-                    prop.GetCustomAttribute(sliderFormatType) is { } fmtAttr)
-                {
-                    var format = fmtAttr.GetType().GetProperty("Format")?.GetValue(fmtAttr) as string;
-                    if (!string.IsNullOrEmpty(format))
-                        fmt = v => string.Format(format, v);
-                }
-
-                section.AddSlider(id, label, binding, min, max, step, fmt, hoverTipDescription);
+            var hasColorPickerAttr = colorPickerAttrType != null &&
+                                     prop.GetCustomAttribute(colorPickerAttrType, false) != null;
+            if (pt == typeof(string) && hasColorPickerAttr)
+            {
+                var (editAlpha, _) = ResolveConfigColorPickerUiOptions(prop, colorPickerAttrType, typeof(string));
+                var binding = CallbackForStaticProperty<string>(modId, dataKey, prop, host);
+                section.AddColor(id, label, binding, hoverTipDescription, editAlpha, false);
                 return;
             }
 
@@ -320,6 +328,81 @@ namespace STS2RitsuLib.Settings
                 }
 
                 section.AddString(id, label, binding, maxLength: maxLen, description: hoverTipDescription);
+                return;
+            }
+
+            ReadSliderRange(prop, sliderRangeType, out var min, out var max, out var step);
+            var sliderFmtDouble = TryGetSliderLabelFormatterDouble(prop, sliderFormatType);
+
+            if (pt == typeof(int))
+            {
+                var minI = Mathf.RoundToInt(min);
+                var maxI = Mathf.RoundToInt(max);
+                var stepI = Mathf.Max(1, Mathf.RoundToInt(step));
+                if (maxI < minI)
+                    (minI, maxI) = (maxI, minI);
+
+                var dMin = (double)minI;
+                var dMax = (double)maxI;
+                var dStep = (double)stepI;
+
+                var binding = ModSettingsBindings.Callback(modId, dataKey,
+                    () => Convert.ToDouble((int)prop.GetValue(null)!),
+                    v =>
+                    {
+                        var vi = (int)Math.Round(v);
+                        vi = Mathf.Clamp(vi, minI, maxI);
+                        vi = minI + (vi - minI) / stepI * stepI;
+                        prop.SetValue(null, vi);
+                        host.NotifyChanged();
+                    },
+                    host.Save);
+
+                Func<double, string>? fmtDouble = null;
+                if (sliderFormatType != null &&
+                    prop.GetCustomAttribute(sliderFormatType) is { } fmtAttr)
+                {
+                    var format = fmtAttr.GetType().GetProperty("Format")?.GetValue(fmtAttr) as string;
+                    if (!string.IsNullOrEmpty(format))
+                        fmtDouble = v => string.Format(format, (int)Math.Round(v));
+                }
+
+                section.AddSlider(id, label, binding, dMin, dMax, dStep, fmtDouble, hoverTipDescription);
+                return;
+            }
+
+            if (pt == typeof(float))
+            {
+                var fMin = (float)min;
+                var fMax = (float)max;
+                var fStep = step <= 0d ? 1f : (float)step;
+                if (fMax < fMin)
+                    (fMin, fMax) = (fMax, fMin);
+
+                Func<float, string>? fmtFloat = null;
+                if (sliderFormatType != null &&
+                    prop.GetCustomAttribute(sliderFormatType) is { } fmtAttrF)
+                {
+                    var format = fmtAttrF.GetType().GetProperty("Format")?.GetValue(fmtAttrF) as string;
+                    if (!string.IsNullOrEmpty(format))
+                        fmtFloat = v => string.Format(format, v);
+                }
+
+#pragma warning disable CS0618
+                section.AddSlider(id, label, CallbackForStaticProperty<float>(modId, dataKey, prop, host), fMin, fMax,
+                    fStep, fmtFloat, hoverTipDescription);
+#pragma warning restore CS0618
+                return;
+            }
+
+            if (pt == typeof(double))
+            {
+                var binding = CallbackForStaticProperty<double>(modId, dataKey, prop, host);
+                var dStep = step <= 0d ? 1d : step;
+                if (max < min)
+                    (min, max) = (max, min);
+
+                section.AddSlider(id, label, binding, min, max, dStep, sliderFmtDouble, hoverTipDescription);
                 return;
             }
 
@@ -344,6 +427,54 @@ namespace STS2RitsuLib.Settings
                 hoverTipDescription,
                 ModSettingsChoicePresentation.Stepper,
             ]);
+        }
+
+        private static void ReadSliderRange(PropertyInfo prop, Type? sliderRangeType, out double min, out double max,
+            out double step)
+        {
+            min = 0;
+            max = 100;
+            step = 1;
+            if (sliderRangeType == null ||
+                prop.GetCustomAttribute(sliderRangeType) is not { } rangeAttr)
+                return;
+
+            var t = rangeAttr.GetType();
+            min = Convert.ToDouble(t.GetProperty("Min")?.GetValue(rangeAttr) ?? 0.0);
+            max = Convert.ToDouble(t.GetProperty("Max")?.GetValue(rangeAttr) ?? 100.0);
+            step = Convert.ToDouble(t.GetProperty("Step")?.GetValue(rangeAttr) ?? 1.0);
+        }
+
+        private static Func<double, string>? TryGetSliderLabelFormatterDouble(PropertyInfo prop,
+            Type? sliderFormatType)
+        {
+            if (sliderFormatType == null ||
+                prop.GetCustomAttribute(sliderFormatType) is not { } fmtAttr)
+                return null;
+
+            var format = fmtAttr.GetType().GetProperty("Format")?.GetValue(fmtAttr) as string;
+            return string.IsNullOrEmpty(format) ? null : v => string.Format(format, v);
+        }
+
+        private static (bool EditAlpha, bool EditIntensity) ResolveConfigColorPickerUiOptions(
+            PropertyInfo prop,
+            Type? colorPickerAttrType,
+            Type storageType)
+        {
+            var editAlpha = true;
+            var editIntensity = false;
+            if (colorPickerAttrType == null ||
+                prop.GetCustomAttribute(colorPickerAttrType, false) is not { } attr)
+                return (editAlpha, editIntensity);
+
+            if (colorPickerAttrType.GetProperty("EditAlpha")?.GetValue(attr) is bool ea)
+                editAlpha = ea;
+
+            if (storageType == typeof(Color) &&
+                colorPickerAttrType.GetProperty("EditIntensity")?.GetValue(attr) is bool ei)
+                editIntensity = ei;
+
+            return (editAlpha, editIntensity);
         }
 
         private static ModSettingsText? TryBaseLibHoverTipDescription(MemberInfo member, Type configConcreteType,

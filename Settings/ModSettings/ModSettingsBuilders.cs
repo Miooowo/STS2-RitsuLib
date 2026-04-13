@@ -519,15 +519,43 @@ namespace STS2RitsuLib.Settings
         }
 
         /// <summary>
-        ///     Adds a color picker bound to a string (serialized color).
+        ///     Adds a color picker bound to a string (serialized color). 保留旧签名以维持 ABI 兼容。
         /// </summary>
+        /// <param name="id">Stable entry id within the section.</param>
+        /// <param name="label">Row label.</param>
+        /// <param name="binding">Backing string binding (hex preferred; see <see cref="ModSettingsColorControl" />).</param>
+        /// <param name="description">Optional description body.</param>
         public ModSettingsSectionBuilder AddColor(
             string id,
             ModSettingsText label,
             IModSettingsValueBinding<string> binding,
             ModSettingsText? description = null)
         {
-            AddEntry(id, new ColorModSettingsEntryDefinition(id, label, binding, description));
+            return AddColor(id, label, binding, description, true, false);
+        }
+
+        /// <summary>
+        ///     Adds a color picker bound to a string (serialized color), with picker chrome options.
+        /// </summary>
+        /// <param name="id">Stable entry id within the section.</param>
+        /// <param name="label">Row label.</param>
+        /// <param name="binding">Backing string binding (hex preferred; see <see cref="ModSettingsColorControl" />).</param>
+        /// <param name="description">Optional description body.</param>
+        /// <param name="editAlpha">Whether the picker allows editing alpha.</param>
+        /// <param name="editIntensity">
+        ///     Whether the picker allows intensity / HDR-style values (Godot
+        ///     <c>ColorPicker.EditIntensity</c>).
+        /// </param>
+        public ModSettingsSectionBuilder AddColor(
+            string id,
+            ModSettingsText label,
+            IModSettingsValueBinding<string> binding,
+            ModSettingsText? description,
+            bool editAlpha,
+            bool editIntensity)
+        {
+            AddEntry(id,
+                new ColorModSettingsEntryDefinition(id, label, binding, description, editAlpha, editIntensity));
             return this;
         }
 
@@ -542,11 +570,30 @@ namespace STS2RitsuLib.Settings
             int? maxLength = null,
             ModSettingsText? description = null)
         {
+            return AddString(id, label, binding, placeholder, maxLength, description, null);
+        }
+
+        /// <summary>
+        ///     Adds a single-line string field with optional visual validation (invalid text shows error chrome; commits
+        ///     are not blocked).
+        /// </summary>
+        public ModSettingsSectionBuilder AddString(
+            string id,
+            ModSettingsText label,
+            IModSettingsValueBinding<string> binding,
+            ModSettingsText? placeholder,
+            int? maxLength,
+            ModSettingsText? description,
+            Func<string, bool>? valueValidationVisual)
+        {
             if (maxLength is < 1)
                 throw new ArgumentOutOfRangeException(nameof(maxLength), "maxLength must be null or >= 1.");
 
             AddEntry(id,
-                new StringModSettingsEntryDefinition(id, label, binding, placeholder, maxLength, description));
+                new StringModSettingsEntryDefinition(id, label, binding, placeholder, maxLength, description)
+                {
+                    ValueValidationVisual = valueValidationVisual,
+                });
             return this;
         }
 

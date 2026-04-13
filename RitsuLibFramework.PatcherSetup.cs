@@ -286,6 +286,8 @@ namespace STS2RitsuLib
             patcher.RegisterPatch<QueueTimelineExpansionUnlockModSlotsAfterNeowPatch>();
             patcher.RegisterPatch<NUnlockTimelineScreenExpansionSlotSortPatch>();
             patcher.RegisterPatch<NTimelineScreenAddEpochSlotsMergeModTemplatesPatch>();
+            patcher.RegisterPatch<NTimelineScreenGetEraIconPolicyPatch>();
+            patcher.RegisterPatch<NEraColumnHideEmptyIconPatch>();
             RegisterFrameworkPatcher(FrameworkPatcherArea.Unlocks, patcher);
         }
 

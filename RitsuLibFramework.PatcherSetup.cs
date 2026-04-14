@@ -182,6 +182,9 @@ namespace STS2RitsuLib
 
             patcher.RegisterPatch<MonsterVisualsPathPatch>();
 
+            patcher.RegisterPatch<RestSiteOptionIconPatch>();
+            patcher.RegisterPatch<RestSiteOptionTitlePatch>();
+
             patcher.RegisterPatch<EventLayoutScenePatch>();
             patcher.RegisterPatch<EventInitialPortraitPatch>();
             patcher.RegisterPatch<EventBackgroundScenePathGetterPatch>();

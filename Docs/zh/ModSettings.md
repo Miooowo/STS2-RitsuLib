@@ -67,6 +67,105 @@ RitsuLib 提供一套用于玩家可编辑值的设置 UI。它构建在 `ModDat
 
 ---
 
+## 自动镜像策略（BaseLib / ModConfig）
+
+`RitsuModSettingsSubmenu` 会自动尝试镜像 `BaseLib` 与 `ModConfig` 的设置页。  
+当你的模组同时接入多套设置源时，可以通过程序集级 `AssemblyMetadata` 指令（仅依赖 `System.Reflection`）控制镜像行为，无需引用 `STS2RitsuLib`。
+
+支持的键（不区分大小写）：
+
+- `RitsuLib.ModSettingsMirror.Global.DisableSources`
+- `RitsuLib.ModSettingsMirror.Global.PreferredSource`
+- `RitsuLib.ModSettingsMirror.Mod.<ModId>.DisableSources`
+- `RitsuLib.ModSettingsMirror.Mod.<ModId>.PreferredSource`
+- `RitsuLib.ModSettingsMirror.Type.<FullTypeName>.DisableSources`
+- `RitsuLib.ModSettingsMirror.Type.<FullTypeName>.PreferredSource`
+
+值约定：
+
+- `DisableSources`：`baselib`、`modconfig`、`all`（可用 `,` / `;` / `|` 分隔多个值）
+- `PreferredSource`：`baselib` 或 `modconfig`
+
+优先级（高 -> 低）：`Type` -> `Mod` -> `Global`。  
+`PreferredSource` 会让非首选来源不参与镜像；`DisableSources` 会直接禁用对应来源镜像。
+
+示例：
+
+```csharp
+using System.Reflection;
+
+[assembly: AssemblyMetadata("RitsuLib.ModSettingsMirror.Mod.MyMod.DisableSources", "modconfig")]
+[assembly: AssemblyMetadata("RitsuLib.ModSettingsMirror.Mod.MyMod.PreferredSource", "baselib")]
+[assembly: AssemblyMetadata(
+    "RitsuLib.ModSettingsMirror.Type.MyMod.Config.AdvancedSettings.DisableSources",
+    "baselib")]
+```
+
+也可以直接写在 `csproj` 中：
+
+```xml
+<ItemGroup>
+  <AssemblyMetadata Include="RitsuLib.ModSettingsMirror.Mod.MyMod.DisableSources" Value="modconfig" />
+  <AssemblyMetadata Include="RitsuLib.ModSettingsMirror.Mod.MyMod.PreferredSource" Value="baselib" />
+  <AssemblyMetadata Include="RitsuLib.ModSettingsMirror.Type.MyMod.Config.AdvancedSettings.DisableSources" Value="baselib" />
+</ItemGroup>
+```
+
+---
+
+## 运行时反射协议（无库引用）
+
+除了 BaseLib / ModConfig 镜像外，RitsuLib 还支持“纯反射协议”注册设置页。  
+模组无需引用 `STS2RitsuLib`，只需在程序集元数据中显式声明 provider 类型：
+
+```xml
+<ItemGroup>
+  <AssemblyMetadata Include="RitsuLib.ModSettingsInterop.ProviderType" Value="YourMod.Scripts.RitsuLibModSettingsInteropProvider" />
+</ItemGroup>
+```
+
+也支持在运行时主动注册 provider（适合你在初始化流程中按需反射调用）：
+
+- `ModSettingsRuntimeReflectionInteropMirror.RegisterProviderType(string providerTypeFullName, string? assemblyName = null)`
+- `ModSettingsRuntimeReflectionInteropMirror.RegisterProviderType(Type providerType)`
+- `ModSettingsRuntimeReflectionInteropMirror.RegisterProviderTypeAndTryRegister(string providerTypeFullName, string? assemblyName = null)`
+- `ModSettingsRuntimeReflectionInteropMirror.RegisterProviderTypeAndTryRegister(Type providerType)`
+
+Provider 约定（全部为 `static` 方法）：
+
+- `object CreateRitsuLibSettingsSchema()`
+- `object? GetRitsuLibSettingValue(string key)`
+- `void SetRitsuLibSettingValue(string key, object value)`
+- 可选：`void SaveRitsuLibSettings()`
+- 可选：`void InvokeRitsuLibSettingAction(string key)`（用于 button）
+- 可选强类型覆盖（优先于 object resolver）：
+  - `bool GetRitsuLibSettingBool(string key)` / `void SetRitsuLibSettingBool(string key, bool value)`
+  - `int GetRitsuLibSettingInt(string key)` / `void SetRitsuLibSettingInt(string key, int value)`
+  - `double GetRitsuLibSettingDouble(string key)` / `void SetRitsuLibSettingDouble(string key, double value)`
+  - `string GetRitsuLibSettingString(string key)` / `void SetRitsuLibSettingString(string key, string value)`
+
+`CreateRitsuLibSettingsSchema()` 可以返回：
+
+- `Dictionary<string, object?>`（或等价对象）
+- JSON 字符串（根节点必须是对象）
+- JSON 文件路径（内容根节点必须是对象）
+
+推荐使用 Godot 路径（`res://`、`user://`），也支持普通文件路径。
+
+字段结构：
+
+- page: `modId`, `pageId`, `title`, `description`, `sortOrder`, `sections`
+- section: `id`, `title`, `description`, `entries`
+- entry:
+  - 公共字段：`id`, `type`, `key`, `label`, `description`, `scope`
+  - `type=toggle|string|button|choice|slider|int-slider`
+  - `choice`：`options`（`[{ value, label }]`）
+  - `slider/int-slider`：`min`, `max`, `step`
+  - `string`：`maxLength`
+  - `button`：`buttonText`, `tone`
+
+---
+
 ## 最小示例
 
 先注册持久化数据：

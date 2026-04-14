@@ -114,6 +114,44 @@ You can also place the same directives directly in `csproj`:
 
 ---
 
+## Runtime Reflection Protocol (No Library Reference)
+
+Besides BaseLib / ModConfig mirrors, RitsuLib also supports a pure reflection protocol for settings pages.  
+Your mod does not need to reference `STS2RitsuLib`; you only need assembly metadata that points to a provider type:
+
+```xml
+<ItemGroup>
+  <AssemblyMetadata Include="RitsuLib.ModSettingsInterop.ProviderType" Value="YourMod.Scripts.RitsuLibModSettingsInteropProvider" />
+</ItemGroup>
+```
+
+Provider contract (all methods are `static`):
+
+- `object CreateRitsuLibSettingsSchema()`
+- `object? GetRitsuLibSettingValue(string key)`
+- `void SetRitsuLibSettingValue(string key, object value)`
+- Optional: `void SaveRitsuLibSettings()`
+- Optional: `void InvokeRitsuLibSettingAction(string key)` (for button actions)
+- Optional typed overrides (preferred over object resolver):
+  - `bool GetRitsuLibSettingBool(string key)` / `void SetRitsuLibSettingBool(string key, bool value)`
+  - `int GetRitsuLibSettingInt(string key)` / `void SetRitsuLibSettingInt(string key, int value)`
+  - `double GetRitsuLibSettingDouble(string key)` / `void SetRitsuLibSettingDouble(string key, double value)`
+  - `string GetRitsuLibSettingString(string key)` / `void SetRitsuLibSettingString(string key, string value)`
+
+`CreateRitsuLibSettingsSchema()` returns an object (commonly a `Dictionary<string, object?>`) with:
+
+- page: `modId`, `pageId`, `title`, `description`, `sortOrder`, `sections`
+- section: `id`, `title`, `description`, `entries`
+- entry:
+  - common fields: `id`, `type`, `key`, `label`, `description`, `scope`
+  - `type=toggle|string|button|choice|slider|int-slider`
+  - `choice`: `options` (`[{ value, label }]`)
+  - `slider/int-slider`: `min`, `max`, `step`
+  - `string`: `maxLength`
+  - `button`: `buttonText`, `tone`
+
+---
+
 ## Minimal Example
 
 First register persisted data:

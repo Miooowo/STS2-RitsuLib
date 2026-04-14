@@ -113,6 +113,44 @@ using System.Reflection;
 
 ---
 
+## 运行时反射协议（无库引用）
+
+除了 BaseLib / ModConfig 镜像外，RitsuLib 还支持“纯反射协议”注册设置页。  
+模组无需引用 `STS2RitsuLib`，只需在程序集元数据中声明 provider 类型：
+
+```xml
+<ItemGroup>
+  <AssemblyMetadata Include="RitsuLib.ModSettingsInterop.ProviderType" Value="YourMod.Scripts.RitsuLibModSettingsInteropProvider" />
+</ItemGroup>
+```
+
+Provider 约定（全部为 `static` 方法）：
+
+- `object CreateRitsuLibSettingsSchema()`
+- `object? GetRitsuLibSettingValue(string key)`
+- `void SetRitsuLibSettingValue(string key, object value)`
+- 可选：`void SaveRitsuLibSettings()`
+- 可选：`void InvokeRitsuLibSettingAction(string key)`（用于 button）
+- 可选强类型覆盖（优先于 object resolver）：
+  - `bool GetRitsuLibSettingBool(string key)` / `void SetRitsuLibSettingBool(string key, bool value)`
+  - `int GetRitsuLibSettingInt(string key)` / `void SetRitsuLibSettingInt(string key, int value)`
+  - `double GetRitsuLibSettingDouble(string key)` / `void SetRitsuLibSettingDouble(string key, double value)`
+  - `string GetRitsuLibSettingString(string key)` / `void SetRitsuLibSettingString(string key, string value)`
+
+`CreateRitsuLibSettingsSchema()` 返回一个对象（通常是 `Dictionary<string, object?>`），字段结构：
+
+- page: `modId`, `pageId`, `title`, `description`, `sortOrder`, `sections`
+- section: `id`, `title`, `description`, `entries`
+- entry:
+  - 公共字段：`id`, `type`, `key`, `label`, `description`, `scope`
+  - `type=toggle|string|button|choice|slider|int-slider`
+  - `choice`：`options`（`[{ value, label }]`）
+  - `slider/int-slider`：`min`, `max`, `step`
+  - `string`：`maxLength`
+  - `button`：`buttonText`, `tone`
+
+---
+
 ## 最小示例
 
 先注册持久化数据：

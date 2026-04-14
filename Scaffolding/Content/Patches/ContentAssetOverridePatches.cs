@@ -810,7 +810,6 @@ namespace STS2RitsuLib.Scaffolding.Content.Patches
                        || ContentAssetOverridePatchHelper.TryUsePortraitPathList(__instance, overrides, ref __result);
             __result = ownedCharacterPaths;
             return false;
-
         }
     }
 

@@ -1,0 +1,816 @@
+using System.Collections;
+using System.Reflection;
+using STS2RitsuLib.Utils.Persistence;
+
+namespace STS2RitsuLib.Settings
+{
+    /// <summary>
+    ///     Mirrors settings pages declared by third-party assemblies through a reflection-only protocol
+    ///     (no compile-time reference to RitsuLib required).
+    /// </summary>
+    public static class ModSettingsRuntimeReflectionInteropMirror
+    {
+        private const string ProviderTypeMetadataKey = "RitsuLib.ModSettingsInterop.ProviderType";
+        private const string SchemaMethodName = "CreateRitsuLibSettingsSchema";
+        private const string ResolverGetMethodName = "GetRitsuLibSettingValue";
+        private const string ResolverSetMethodName = "SetRitsuLibSettingValue";
+        private const string ResolverSaveMethodName = "SaveRitsuLibSettings";
+        private const string ActionInvokeMethodName = "InvokeRitsuLibSettingAction";
+        private const string TypedGetBoolMethodName = "GetRitsuLibSettingBool";
+        private const string TypedSetBoolMethodName = "SetRitsuLibSettingBool";
+        private const string TypedGetDoubleMethodName = "GetRitsuLibSettingDouble";
+        private const string TypedSetDoubleMethodName = "SetRitsuLibSettingDouble";
+        private const string TypedGetIntMethodName = "GetRitsuLibSettingInt";
+        private const string TypedSetIntMethodName = "SetRitsuLibSettingInt";
+        private const string TypedGetStringMethodName = "GetRitsuLibSettingString";
+        private const string TypedSetStringMethodName = "SetRitsuLibSettingString";
+
+        private static readonly Lock Gate = new();
+
+        /// <summary>
+        ///     Discovers reflection providers and registers mirrored pages from their declared schemas.
+        /// </summary>
+        public static int TryRegisterMirroredPages()
+        {
+            lock (Gate)
+            {
+                var providers = DiscoverProviders();
+                if (providers.Count == 0)
+                    return 0;
+
+                var added = 0;
+                foreach (var provider in providers)
+                {
+                    if (!TryReadSchema(provider, out var schema))
+                        continue;
+
+                    if (!TryRegisterFromSchema(provider, schema))
+                        continue;
+
+                    added++;
+                }
+
+                return added;
+            }
+        }
+
+        private static List<InteropProvider> DiscoverProviders()
+        {
+            var providers = new List<InteropProvider>();
+            foreach (var asm in AppDomain.CurrentDomain.GetAssemblies())
+            {
+                var typeNames = ReadProviderTypeNames(asm);
+                if (typeNames.Count == 0)
+                {
+                    var convention = asm.GetType("RitsuLibModSettingsInteropProvider", false);
+                    if (convention != null)
+                        typeNames.Add(convention.FullName ?? "RitsuLibModSettingsInteropProvider");
+                }
+
+                if (typeNames.Count == 0)
+                    continue;
+
+                foreach (var typeName in typeNames)
+                {
+                    if (string.IsNullOrWhiteSpace(typeName))
+                        continue;
+
+                    var providerType = asm.GetType(typeName, false);
+                    if (providerType == null)
+                    {
+                        RitsuLibFramework.Logger.Warn(
+                            $"[ModSettingsRuntimeReflectionInteropMirror] Provider type not found: {asm.GetName().Name}::{typeName}");
+                        continue;
+                    }
+
+                    var schemaMethod = providerType.GetMethod(SchemaMethodName,
+                        BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static);
+                    if (schemaMethod == null)
+                    {
+                        RitsuLibFramework.Logger.Warn(
+                            $"[ModSettingsRuntimeReflectionInteropMirror] Missing static method '{SchemaMethodName}' on {providerType.FullName}.");
+                        continue;
+                    }
+
+                    providers.Add(new(providerType, schemaMethod));
+                }
+            }
+
+            return providers;
+        }
+
+        private static HashSet<string> ReadProviderTypeNames(Assembly asm)
+        {
+            var result = new HashSet<string>(StringComparer.Ordinal);
+            object[] attrs;
+            try
+            {
+                attrs = asm.GetCustomAttributes(typeof(AssemblyMetadataAttribute), false);
+            }
+            catch
+            {
+                return result;
+            }
+
+            foreach (var attr in attrs)
+            {
+                if (attr is not AssemblyMetadataAttribute metadata)
+                    continue;
+                if (!string.Equals(metadata.Key, ProviderTypeMetadataKey, StringComparison.OrdinalIgnoreCase))
+                    continue;
+                if (string.IsNullOrWhiteSpace(metadata.Value))
+                    continue;
+                result.Add(metadata.Value.Trim());
+            }
+
+            return result;
+        }
+
+        private static bool TryReadSchema(InteropProvider provider, out InteropSchema schema)
+        {
+            schema = null!;
+            object? rawSchema;
+            try
+            {
+                rawSchema = provider.SchemaMethod.Invoke(null, []);
+            }
+            catch (Exception ex)
+            {
+                RitsuLibFramework.Logger.Warn(
+                    $"[ModSettingsRuntimeReflectionInteropMirror] Schema invoke failed for {provider.ProviderType.FullName}: {ex.Message}");
+                return false;
+            }
+
+            if (rawSchema == null || !TryAsMap(rawSchema, out var root))
+            {
+                RitsuLibFramework.Logger.Warn(
+                    $"[ModSettingsRuntimeReflectionInteropMirror] Schema payload is null/invalid for {provider.ProviderType.FullName}.");
+                return false;
+            }
+
+            if (TryParseSchema(root, out schema)) return true;
+            RitsuLibFramework.Logger.Warn(
+                $"[ModSettingsRuntimeReflectionInteropMirror] Schema parse failed for {provider.ProviderType.FullName}.");
+            return false;
+
+        }
+
+        private static bool TryRegisterFromSchema(InteropProvider provider, InteropSchema schema)
+        {
+            if (!ModSettingsMirrorInteropPolicy.ShouldMirror(ModSettingsMirrorSource.RuntimeInterop, schema.ModId,
+                    provider.ProviderType))
+                return false;
+
+            if (ModSettingsRegistry.TryGetPage(schema.ModId, schema.PageId, out _))
+                return false;
+
+            var access = BuildAccessor(provider.ProviderType);
+            var saveAction = access.SaveAction;
+            try
+            {
+                ModSettingsRegistry.Register(schema.ModId, page =>
+                {
+                    page.WithTitle(ModSettingsText.Literal(schema.Title));
+                    if (!string.IsNullOrWhiteSpace(schema.Description))
+                        page.WithDescription(ModSettingsText.Literal(schema.Description));
+                    page.WithSortOrder(schema.SortOrder);
+                    if (!string.IsNullOrWhiteSpace(schema.ModDisplayName))
+                        page.WithModDisplayName(ModSettingsText.Literal(schema.ModDisplayName));
+                    if (schema.ModSidebarOrder is { } sidebarOrder)
+                        page.WithModSidebarOrder(sidebarOrder);
+
+                    foreach (var section in schema.Sections)
+                        page.AddSection(section.Id, sb =>
+                        {
+                            if (!string.IsNullOrWhiteSpace(section.Title))
+                                sb.WithTitle(ModSettingsText.Literal(section.Title));
+                            if (!string.IsNullOrWhiteSpace(section.Description))
+                                sb.WithDescription(ModSettingsText.Literal(section.Description));
+
+                            foreach (var entry in section.Entries)
+                                AppendEntry(sb, schema.ModId, entry, access, saveAction);
+                        });
+                }, schema.PageId);
+
+                return true;
+            }
+            catch (Exception ex)
+            {
+                RitsuLibFramework.Logger.Warn(
+                    $"[ModSettingsRuntimeReflectionInteropMirror] Register failed for {schema.ModId}::{schema.PageId}: {ex.Message}");
+                return false;
+            }
+        }
+
+        private static void AppendEntry(
+            ModSettingsSectionBuilder section,
+            string modId,
+            InteropEntry entry,
+            InteropAccessor access,
+            Action saveAction)
+        {
+            var label = ModSettingsText.Literal(entry.Label);
+            var description = string.IsNullOrWhiteSpace(entry.Description)
+                ? null
+                : ModSettingsText.Literal(entry.Description);
+            var dataKey = $"interop::{entry.Key}";
+
+            switch (entry.Type)
+            {
+                case InteropEntryType.Toggle:
+                {
+                    var binding = ModSettingsBindings.Callback(modId, dataKey,
+                        () => ReadBool(entry.Key, access),
+                        value => WriteBool(entry.Key, value, access),
+                        saveAction,
+                        entry.Scope);
+                    section.AddToggle(entry.Id, label, binding, description);
+                    return;
+                }
+                case InteropEntryType.Slider:
+                {
+                    var binding = ModSettingsBindings.Callback(modId, dataKey,
+                        () => ReadDouble(entry.Key, access),
+                        value => WriteDouble(entry.Key, value, access),
+                        saveAction,
+                        entry.Scope);
+                    section.AddSlider(entry.Id, label, binding, entry.Min, entry.Max, entry.Step, null, description);
+                    return;
+                }
+                case InteropEntryType.IntSlider:
+                {
+                    var binding = ModSettingsBindings.Callback(modId, dataKey,
+                        () => ReadInt(entry.Key, access),
+                        value => WriteInt(entry.Key, value, access),
+                        saveAction,
+                        entry.Scope);
+                    section.AddIntSlider(entry.Id, label, binding, (int)Math.Round(entry.Min),
+                        (int)Math.Round(entry.Max),
+                        Math.Max(1, (int)Math.Round(entry.Step)), null, description);
+                    return;
+                }
+                case InteropEntryType.String:
+                {
+                    var binding = ModSettingsBindings.Callback(modId, dataKey,
+                        () => ReadString(entry.Key, access),
+                        value => WriteString(entry.Key, value, access),
+                        saveAction,
+                        entry.Scope);
+                    section.AddString(entry.Id, label, binding, null, entry.MaxLength, description);
+                    return;
+                }
+                case InteropEntryType.Choice:
+                {
+                    if (entry.Options.Count == 0)
+                        return;
+                    var options = entry.Options
+                        .Select(o => new ModSettingsChoiceOption<string>(o.Value, ModSettingsText.Literal(o.Label)))
+                        .ToArray();
+                    var firstValue = options[0].Value;
+                    var binding = ModSettingsBindings.Callback(modId, dataKey,
+                        () =>
+                        {
+                            var current = ReadString(entry.Key, access);
+                            return string.IsNullOrWhiteSpace(current) ? firstValue : current;
+                        },
+                        value => WriteString(entry.Key, string.IsNullOrWhiteSpace(value) ? firstValue : value, access),
+                        saveAction,
+                        entry.Scope);
+                    section.AddChoice(entry.Id, label, binding, options, description,
+                        entry.ChoicePresentation == "dropdown"
+                            ? ModSettingsChoicePresentation.Dropdown
+                            : ModSettingsChoicePresentation.Stepper);
+                    return;
+                }
+                case InteropEntryType.Button:
+                {
+                    var buttonText = ModSettingsText.Literal(string.IsNullOrWhiteSpace(entry.ButtonText)
+                        ? entry.Label
+                        : entry.ButtonText);
+                    section.AddButton(entry.Id, label, buttonText, () => access.InvokeAction(entry.Key),
+                        entry.ButtonTone, description);
+                    return;
+                }
+            }
+        }
+
+        private static bool ReadBool(string key, InteropAccessor access)
+        {
+            if (access.GetBool != null)
+                return access.GetBool(key);
+            return CoerceBool(access.GetObject(key));
+        }
+
+        private static void WriteBool(string key, bool value, InteropAccessor access)
+        {
+            if (access.SetBool != null)
+            {
+                access.SetBool(key, value);
+                return;
+            }
+
+            access.SetObject(key, value);
+        }
+
+        private static double ReadDouble(string key, InteropAccessor access)
+        {
+            if (access.GetDouble != null)
+                return access.GetDouble(key);
+            return CoerceDouble(access.GetObject(key));
+        }
+
+        private static void WriteDouble(string key, double value, InteropAccessor access)
+        {
+            if (access.SetDouble != null)
+            {
+                access.SetDouble(key, value);
+                return;
+            }
+
+            access.SetObject(key, value);
+        }
+
+        private static int ReadInt(string key, InteropAccessor access)
+        {
+            if (access.GetInt != null)
+                return access.GetInt(key);
+            return CoerceInt(access.GetObject(key));
+        }
+
+        private static void WriteInt(string key, int value, InteropAccessor access)
+        {
+            if (access.SetInt != null)
+            {
+                access.SetInt(key, value);
+                return;
+            }
+
+            access.SetObject(key, value);
+        }
+
+        private static string ReadString(string key, InteropAccessor access)
+        {
+            if (access.GetString != null)
+                return access.GetString(key) ?? string.Empty;
+            return access.GetObject(key)?.ToString() ?? string.Empty;
+        }
+
+        private static void WriteString(string key, string value, InteropAccessor access)
+        {
+            if (access.SetString != null)
+            {
+                access.SetString(key, value);
+                return;
+            }
+
+            access.SetObject(key, value);
+        }
+
+        private static bool CoerceBool(object? value)
+        {
+            try
+            {
+                return value switch
+                {
+                    null => false,
+                    bool b => b,
+                    string s when bool.TryParse(s, out var b) => b,
+                    _ => Convert.ToBoolean(value),
+                };
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        private static double CoerceDouble(object? value)
+        {
+            try
+            {
+                return value switch
+                {
+                    null => 0d,
+                    double d => d,
+                    float f => f,
+                    int i => i,
+                    long l => l,
+                    _ => Convert.ToDouble(value),
+                };
+            }
+            catch
+            {
+                return 0d;
+            }
+        }
+
+        private static int CoerceInt(object? value)
+        {
+            try
+            {
+                return value switch
+                {
+                    null => 0,
+                    int i => i,
+                    long l => (int)l,
+                    double d => (int)Math.Round(d),
+                    float f => (int)Math.Round(f),
+                    _ => Convert.ToInt32(value),
+                };
+            }
+            catch
+            {
+                return 0;
+            }
+        }
+
+        private static InteropAccessor BuildAccessor(Type providerType)
+        {
+            var flags = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static;
+
+            var getObject = providerType.GetMethod(ResolverGetMethodName, flags, [typeof(string)]);
+            var setObject = providerType.GetMethod(ResolverSetMethodName, flags, [typeof(string), typeof(object)]);
+            var save = providerType.GetMethod(ResolverSaveMethodName, flags, Type.EmptyTypes);
+            var action = providerType.GetMethod(ActionInvokeMethodName, flags, [typeof(string)]);
+
+            var getBool = providerType.GetMethod(TypedGetBoolMethodName, flags, [typeof(string)]);
+            var setBool = providerType.GetMethod(TypedSetBoolMethodName, flags, [typeof(string), typeof(bool)]);
+            var getDouble = providerType.GetMethod(TypedGetDoubleMethodName, flags, [typeof(string)]);
+            var setDouble = providerType.GetMethod(TypedSetDoubleMethodName, flags,
+                [typeof(string), typeof(double)]);
+            var getInt = providerType.GetMethod(TypedGetIntMethodName, flags, [typeof(string)]);
+            var setInt = providerType.GetMethod(TypedSetIntMethodName, flags, [typeof(string), typeof(int)]);
+            var getString = providerType.GetMethod(TypedGetStringMethodName, flags, [typeof(string)]);
+            var setString = providerType.GetMethod(TypedSetStringMethodName, flags,
+                [typeof(string), typeof(string)]);
+
+            if (getObject == null || setObject == null)
+                throw new InvalidOperationException(
+                    $"Provider {providerType.FullName} requires static {ResolverGetMethodName}(string) and {ResolverSetMethodName}(string, object).");
+
+            return new(
+                key => getObject.Invoke(null, [key]),
+                (key, value) => setObject.Invoke(null, [key, value]),
+                key =>
+                {
+                    if (getBool == null) throw new InvalidOperationException();
+                    return (bool)(getBool.Invoke(null, [key]) ?? false);
+                },
+                (key, value) => setBool?.Invoke(null, [key, value]),
+                key =>
+                {
+                    if (getDouble == null) throw new InvalidOperationException();
+                    return Convert.ToDouble(getDouble.Invoke(null, [key]) ?? 0d);
+                },
+                (key, value) => setDouble?.Invoke(null, [key, value]),
+                key =>
+                {
+                    if (getInt == null) throw new InvalidOperationException();
+                    return Convert.ToInt32(getInt.Invoke(null, [key]) ?? 0);
+                },
+                (key, value) => setInt?.Invoke(null, [key, value]),
+                key => getString?.Invoke(null, [key]) as string,
+                (key, value) => setString?.Invoke(null, [key, value]),
+                () => save?.Invoke(null, []),
+                key => action?.Invoke(null, [key]));
+        }
+
+        private static bool TryParseSchema(IDictionary<string, object?> root, out InteropSchema schema)
+        {
+            schema = null!;
+            if (!TryGetString(root, "modId", out var modId) || string.IsNullOrWhiteSpace(modId))
+                return false;
+
+            var pageId = TryGetString(root, "pageId", out var p) && !string.IsNullOrWhiteSpace(p)
+                ? p
+                : "interop";
+            var title = TryGetString(root, "title", out var t) && !string.IsNullOrWhiteSpace(t) ? t : "Settings";
+            var description = TryGetString(root, "description", out var d) ? d : null;
+            var modDisplayName = TryGetString(root, "modDisplayName", out var mdn) ? mdn : null;
+            var sortOrder = TryGetInt(root, "sortOrder", out var so) ? so ?? 10_040 : 10_040;
+            var modSidebarOrder = TryGetInt(root, "modSidebarOrder", out var mso) ? mso : null;
+
+            if (!TryGetEnumerable(root, "sections", out var sectionsRaw))
+                return false;
+
+            var sections = new List<InteropSection>();
+            foreach (var sectionRaw in sectionsRaw)
+            {
+                if (sectionRaw == null || !TryAsMap(sectionRaw, out var sectionMap))
+                    continue;
+                if (!TryParseSection(sectionMap, out var section))
+                    continue;
+                sections.Add(section);
+            }
+
+            if (sections.Count == 0)
+                return false;
+
+            schema = new(modId, pageId, title, description, sortOrder, modDisplayName, modSidebarOrder, sections);
+            return true;
+        }
+
+        private static bool TryParseSection(IDictionary<string, object?> map, out InteropSection section)
+        {
+            section = null!;
+            if (!TryGetString(map, "id", out var id) || string.IsNullOrWhiteSpace(id))
+                return false;
+
+            var title = TryGetString(map, "title", out var t) ? t : null;
+            var description = TryGetString(map, "description", out var d) ? d : null;
+            if (!TryGetEnumerable(map, "entries", out var entriesRaw))
+                return false;
+
+            var entries = new List<InteropEntry>();
+            foreach (var entryRaw in entriesRaw)
+            {
+                if (entryRaw == null || !TryAsMap(entryRaw, out var entryMap))
+                    continue;
+                if (!TryParseEntry(entryMap, out var entry))
+                    continue;
+                entries.Add(entry);
+            }
+
+            if (entries.Count == 0)
+                return false;
+
+            section = new(id, title, description, entries);
+            return true;
+        }
+
+        private static bool TryParseEntry(IDictionary<string, object?> map, out InteropEntry entry)
+        {
+            entry = null!;
+            if (!TryGetString(map, "id", out var id) || string.IsNullOrWhiteSpace(id))
+                return false;
+            if (!TryGetString(map, "type", out var typeName) || !TryParseEntryType(typeName, out var type))
+                return false;
+
+            var key = TryGetString(map, "key", out var k) && !string.IsNullOrWhiteSpace(k) ? k : id;
+            var label = TryGetString(map, "label", out var l) && !string.IsNullOrWhiteSpace(l) ? l : id;
+            var description = TryGetString(map, "description", out var d) ? d : null;
+            var buttonText = TryGetString(map, "buttonText", out var bt) ? bt : null;
+            var min = TryGetDouble(map, "min", out var minValue) ? minValue : 0d;
+            var max = TryGetDouble(map, "max", out var maxValue) ? maxValue : 100d;
+            var step = TryGetDouble(map, "step", out var stepValue) ? stepValue : 1d;
+            if (max < min)
+                (min, max) = (max, min);
+            if (step <= 0d)
+                step = 1d;
+            var maxLength = TryGetInt(map, "maxLength", out var ml) ? ml : null;
+            var scope = ParseScope(TryGetString(map, "scope", out var scopeRaw) ? scopeRaw : null);
+            var presentation = TryGetString(map, "presentation", out var p) ? p : "stepper";
+            var tone = ParseButtonTone(TryGetString(map, "tone", out var toneRaw) ? toneRaw : null);
+            var options = ParseOptions(map);
+
+            entry = new(
+                id,
+                type,
+                key,
+                label,
+                description,
+                min,
+                max,
+                step,
+                maxLength,
+                options,
+                buttonText,
+                tone,
+                scope,
+                presentation);
+            return true;
+        }
+
+        private static SaveScope ParseScope(string? value)
+        {
+            return value?.Trim().ToLowerInvariant() switch
+            {
+                "profile" => SaveScope.Profile,
+                _ => SaveScope.Global,
+            };
+        }
+
+        private static ModSettingsButtonTone ParseButtonTone(string? value)
+        {
+            return value?.Trim().ToLowerInvariant() switch
+            {
+                "accent" => ModSettingsButtonTone.Accent,
+                "danger" => ModSettingsButtonTone.Danger,
+                _ => ModSettingsButtonTone.Normal,
+            };
+        }
+
+        private static List<InteropChoiceOption> ParseOptions(IDictionary<string, object?> entryMap)
+        {
+            var options = new List<InteropChoiceOption>();
+            if (!TryGetEnumerable(entryMap, "options", out var optionsRaw))
+                return options;
+
+            foreach (var optionRaw in optionsRaw)
+            {
+                if (optionRaw == null)
+                    continue;
+
+                if (TryAsMap(optionRaw, out var optionMap))
+                {
+                    if (!TryGetString(optionMap, "value", out var value) || string.IsNullOrWhiteSpace(value))
+                        continue;
+                    var label = TryGetString(optionMap, "label", out var optionLabel) &&
+                                !string.IsNullOrWhiteSpace(optionLabel)
+                        ? optionLabel
+                        : value;
+                    options.Add(new(value, label));
+                    continue;
+                }
+
+                var str = optionRaw.ToString();
+                if (string.IsNullOrWhiteSpace(str))
+                    continue;
+                options.Add(new(str, str));
+            }
+
+            return options;
+        }
+
+        private static bool TryParseEntryType(string raw, out InteropEntryType type)
+        {
+            type = raw.Trim().ToLowerInvariant() switch
+            {
+                "toggle" => InteropEntryType.Toggle,
+                "slider" => InteropEntryType.Slider,
+                "int-slider" or "intslider" => InteropEntryType.IntSlider,
+                "choice" => InteropEntryType.Choice,
+                "string" => InteropEntryType.String,
+                "button" => InteropEntryType.Button,
+                _ => (InteropEntryType)(-1),
+            };
+            return Enum.IsDefined(type);
+        }
+
+        private static bool TryAsMap(object obj, out IDictionary<string, object?> map)
+        {
+            switch (obj)
+            {
+                case IDictionary<string, object?> direct:
+                    map = new Dictionary<string, object?>(direct, StringComparer.OrdinalIgnoreCase);
+                    return true;
+                case IDictionary dict:
+                {
+                    var tmp = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
+                    foreach (DictionaryEntry de in dict)
+                    {
+                        if (de.Key == null)
+                            continue;
+                        tmp[de.Key.ToString() ?? ""] = de.Value;
+                    }
+
+                    map = tmp;
+                    return true;
+                }
+            }
+
+            var props = obj.GetType().GetProperties(BindingFlags.Public | BindingFlags.Instance);
+            if (props.Length == 0)
+            {
+                map = null!;
+                return false;
+            }
+
+            var converted = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
+            foreach (var prop in props)
+            {
+                if (!prop.CanRead)
+                    continue;
+                converted[prop.Name] = prop.GetValue(obj);
+            }
+
+            map = converted;
+            return true;
+        }
+
+        private static bool TryGetEnumerable(IDictionary<string, object?> map, string key,
+            out IEnumerable<object?> values)
+        {
+            values = [];
+            if (!map.TryGetValue(key, out var raw) || raw == null || raw is string)
+                return false;
+            if (raw is not IEnumerable enumerable)
+                return false;
+
+            var list = enumerable.Cast<object?>().ToList();
+            values = list;
+            return true;
+        }
+
+        private static bool TryGetString(IDictionary<string, object?> map, string key, out string value)
+        {
+            value = "";
+            if (!map.TryGetValue(key, out var raw) || raw == null)
+                return false;
+            value = raw.ToString() ?? "";
+            return true;
+        }
+
+        private static bool TryGetInt(IDictionary<string, object?> map, string key, out int? value)
+        {
+            value = null;
+            if (!map.TryGetValue(key, out var raw) || raw == null)
+                return false;
+            try
+            {
+                value = raw switch
+                {
+                    int i => i,
+                    long l => (int)l,
+                    double d => (int)Math.Round(d),
+                    float f => (int)Math.Round(f),
+                    _ => Convert.ToInt32(raw),
+                };
+                return true;
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        private static bool TryGetDouble(IDictionary<string, object?> map, string key, out double value)
+        {
+            value = 0d;
+            if (!map.TryGetValue(key, out var raw) || raw == null)
+                return false;
+            try
+            {
+                value = raw switch
+                {
+                    double d => d,
+                    float f => f,
+                    int i => i,
+                    long l => l,
+                    _ => Convert.ToDouble(raw),
+                };
+                return true;
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        private sealed record InteropProvider(Type ProviderType, MethodInfo SchemaMethod);
+
+        private sealed record InteropSchema(
+            string ModId,
+            string PageId,
+            string Title,
+            string? Description,
+            int SortOrder,
+            string? ModDisplayName,
+            int? ModSidebarOrder,
+            List<InteropSection> Sections);
+
+        private sealed record InteropSection(string Id, string? Title, string? Description, List<InteropEntry> Entries);
+
+        private sealed record InteropEntry(
+            string Id,
+            InteropEntryType Type,
+            string Key,
+            string Label,
+            string? Description,
+            double Min,
+            double Max,
+            double Step,
+            int? MaxLength,
+            List<InteropChoiceOption> Options,
+            string? ButtonText,
+            ModSettingsButtonTone ButtonTone,
+            SaveScope Scope,
+            string ChoicePresentation);
+
+        private sealed record InteropChoiceOption(string Value, string Label);
+
+        private enum InteropEntryType
+        {
+            Toggle,
+            Slider,
+            IntSlider,
+            Choice,
+            String,
+            Button,
+        }
+
+        private sealed record InteropAccessor(
+            Func<string, object?> GetObject,
+            Action<string, object?> SetObject,
+            Func<string, bool>? GetBool,
+            Action<string, bool>? SetBool,
+            Func<string, double>? GetDouble,
+            Action<string, double>? SetDouble,
+            Func<string, int>? GetInt,
+            Action<string, int>? SetInt,
+            Func<string, string?>? GetString,
+            Action<string, string>? SetString,
+            Action SaveAction,
+            Action<string> InvokeAction);
+    }
+}

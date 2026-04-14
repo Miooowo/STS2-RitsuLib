@@ -6,6 +6,7 @@ namespace STS2RitsuLib.Settings
     {
         BaseLib,
         ModConfig,
+        RuntimeInterop,
     }
 
     internal static class ModSettingsMirrorInteropPolicy
@@ -27,10 +28,7 @@ namespace STS2RitsuLib.Settings
                 return false;
 
             var preferred = ResolvePreferredSource(modId, settingsType);
-            if (preferred is { } preferredSource && preferredSource != source)
-                return false;
-
-            return true;
+            return preferred is not { } preferredSource || preferredSource == source;
         }
 
         private static HashSet<ModSettingsMirrorSource> CollectDisabledSources(string modId, Type? settingsType)
@@ -62,10 +60,7 @@ namespace STS2RitsuLib.Settings
                 return typePreferred;
 
             var modPreferred = ResolvePreferredSourceByKey(BuildModDirectiveKey(modId, PreferredSourceField));
-            if (modPreferred != null)
-                return modPreferred;
-
-            return ResolvePreferredSourceByKey(BuildGlobalDirectiveKey(PreferredSourceField));
+            return modPreferred ?? ResolvePreferredSourceByKey(BuildGlobalDirectiveKey(PreferredSourceField));
         }
 
         private static ModSettingsMirrorSource? ResolvePreferredSourceByKey(string? key)
@@ -130,6 +125,7 @@ namespace STS2RitsuLib.Settings
                 {
                     result.Add(ModSettingsMirrorSource.BaseLib);
                     result.Add(ModSettingsMirrorSource.ModConfig);
+                    result.Add(ModSettingsMirrorSource.RuntimeInterop);
                     continue;
                 }
 
@@ -174,7 +170,15 @@ namespace STS2RitsuLib.Settings
                 return true;
             }
 
-            return false;
+            if (!token.Equals("runtimeinterop", StringComparison.OrdinalIgnoreCase) &&
+                !token.Equals("runtime_interop", StringComparison.OrdinalIgnoreCase) &&
+                !token.Equals("runtime-interop", StringComparison.OrdinalIgnoreCase) &&
+                !token.Equals("reflection", StringComparison.OrdinalIgnoreCase) &&
+                !token.Equals("reflectioninterop", StringComparison.OrdinalIgnoreCase) &&
+                !token.Equals("reflection_interop", StringComparison.OrdinalIgnoreCase) &&
+                !token.Equals("reflection-interop", StringComparison.OrdinalIgnoreCase)) return false;
+            source = ModSettingsMirrorSource.RuntimeInterop;
+            return true;
         }
 
         private static string BuildGlobalDirectiveKey(string field)
@@ -189,10 +193,9 @@ namespace STS2RitsuLib.Settings
 
         private static string? BuildTypeDirectiveKey(Type? settingsType, string field)
         {
-            if (settingsType?.FullName == null)
-                return null;
-
-            return $"{DirectivePrefix}{TypeScope}.{settingsType.FullName}.{field}";
+            return settingsType?.FullName == null
+                ? null
+                : $"{DirectivePrefix}{TypeScope}.{settingsType.FullName}.{field}";
         }
     }
 }

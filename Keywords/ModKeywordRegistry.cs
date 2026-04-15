@@ -362,6 +362,16 @@ namespace STS2RitsuLib.Keywords
                 : throw new KeyNotFoundException($"Keyword '{NormalizeId(id)}' is not registered.");
         }
 
+        internal static ModKeywordDefinition[] GetDefinitionsSnapshot()
+        {
+            lock (SyncRoot)
+            {
+                return Definitions.Values
+                    .OrderBy(def => def.Id, StringComparer.Ordinal)
+                    .ToArray();
+            }
+        }
+
         /// <summary>
         ///     Builds a vanilla <see cref="IHoverTip" /> for <paramref name="id" /> using registered title, description, and
         ///     icon.

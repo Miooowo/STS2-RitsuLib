@@ -498,6 +498,56 @@ namespace STS2RitsuLib.Content
             return ResolveModels<CharacterModel>(RegisteredCharacters);
         }
 
+        internal static ModContentRegisteredTypeSnapshot[] GetRegisteredTypeSnapshots()
+        {
+            lock (SyncRoot)
+            {
+                return RegisteredTypeOwners
+                    .OrderBy(kvp => kvp.Value, StringComparer.OrdinalIgnoreCase)
+                    .ThenBy(kvp => kvp.Key.FullName, StringComparer.Ordinal)
+                    .Select(kvp =>
+                    {
+                        var modelType = kvp.Key;
+                        var modId = kvp.Value;
+                        var modelDbId = TryGetModelDbId(modelType);
+                        var fixedPublicEntry = TryGetFixedPublicEntry(modelType, modId);
+                        return new ModContentRegisteredTypeSnapshot(
+                            modId,
+                            modelType,
+                            modelDbId,
+                            fixedPublicEntry);
+                    })
+                    .ToArray();
+            }
+
+            static ModelId? TryGetModelDbId(Type modelType)
+            {
+                try
+                {
+                    return ModelDb.GetId(modelType);
+                }
+                catch
+                {
+                    return null;
+                }
+            }
+
+            static string? TryGetFixedPublicEntry(Type modelType, string modId)
+            {
+                if (FixedPublicEntryOverrides.TryGetValue(modelType, out var entry))
+                    return entry;
+
+                try
+                {
+                    return GetFixedPublicEntry(modId, modelType);
+                }
+                catch
+                {
+                    return null;
+                }
+            }
+        }
+
         internal static Type[] GetRegisteredCharacterStarterCards(Type characterType)
         {
             return GetRegisteredCharacterStarterTypes(characterType, CharacterStarterContentKind.Card);
@@ -916,6 +966,12 @@ namespace STS2RitsuLib.Content
             Relic,
             Potion,
         }
+
+        internal readonly record struct ModContentRegisteredTypeSnapshot(
+            string ModId,
+            Type ModelType,
+            ModelId? ModelDbId,
+            string? ExpectedPublicEntry);
 
         private readonly record struct CharacterStarterRegistration(
             Type CharacterType,

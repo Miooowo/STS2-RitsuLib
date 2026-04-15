@@ -56,6 +56,18 @@ namespace STS2RitsuLib.Settings
                     settings => settings.HarmonyPatchDumpOnFirstMainMenu,
                     (settings, value) => settings.HarmonyPatchDumpOnFirstMainMenu = value);
 
+                var selfCheckOutputFolderBinding = ModSettingsBindings.Global<RitsuLibSettings, string>(
+                    Const.ModId,
+                    Const.SettingsKey,
+                    settings => settings.SelfCheckOutputFolderPath,
+                    (settings, value) => settings.SelfCheckOutputFolderPath = value);
+
+                var selfCheckOnFirstMainMenuBinding = ModSettingsBindings.Global<RitsuLibSettings, bool>(
+                    Const.ModId,
+                    Const.SettingsKey,
+                    settings => settings.SelfCheckOnFirstMainMenu,
+                    (settings, value) => settings.SelfCheckOnFirstMainMenu = value);
+
                 var cardPngExportPathBinding = ModSettingsBindings.Global<RitsuLibSettings, string>(
                     Const.ModId,
                     Const.SettingsKey,
@@ -166,6 +178,13 @@ namespace STS2RitsuLib.Settings
                             T("ritsulib.section.harmonyDump.description",
                                 "Export a text report of patched methods (prefix/postfix/transpiler/finalizer) for debugging mod interactions."))
                         .AddSubpage(
+                            "self_check_open",
+                            T("ritsulib.section.selfCheck.title", "Self-check mode"),
+                            "self-check",
+                            T("button.open", "Open"),
+                            T("ritsulib.section.selfCheck.description",
+                                "Run framework self-checks, export logs and Harmony dump into one folder, then pack them into a zip."))
+                        .AddSubpage(
                             "card_png_export_open",
                             T("ritsulib.section.cardPngExport.title", "Card PNG export (dev)"),
                             "card-png-export",
@@ -230,6 +249,56 @@ namespace STS2RitsuLib.Settings
                                 T("ritsulib.harmonyDump.now.description",
                                     "Generates the report immediately using the output path. Check the log for success or errors."))),
                     "harmony-patch-dump");
+
+                RitsuLibFramework.RegisterModSettings(
+                    Const.ModId,
+                    page => page
+                        .AsChildOf(Const.ModId)
+                        .WithSortOrder(-225)
+                        .WithTitle(T("ritsulib.page.selfCheck.title", "Self-check mode"))
+                        .WithDescription(T("ritsulib.page.selfCheck.description",
+                            "Run built-in framework checks and export all diagnostics in one package."))
+                        .AddSection("self_check", section => section
+                            .AddString(
+                                "self_check_output_folder_path",
+                                T("ritsulib.selfCheck.path.label", "Output folder"),
+                                selfCheckOutputFolderBinding,
+                                T("ritsulib.selfCheck.path.placeholder",
+                                    "Absolute path or user://… (e.g. user://ritsulib_self_check)"),
+                                1024,
+                                T("ritsulib.selfCheck.path.description",
+                                    "Self-check artifacts are written to a timestamped folder, then zipped in the same parent folder."))
+                            .AddToggle(
+                                "self_check_on_first_main_menu",
+                                T("ritsulib.selfCheck.auto.label", "Run once when main menu first loads"),
+                                selfCheckOnFirstMainMenuBinding,
+                                T("ritsulib.selfCheck.auto.description",
+                                    "Automatically runs one self-check export per game session after the first main menu load."))
+                            .AddButton(
+                                "self_check_browse",
+                                T("ritsulib.selfCheck.browse.label", "Choose output folder"),
+                                T("ritsulib.selfCheck.browse.button", "Browse…"),
+                                host => SelfCheckExportFolderDialog.Show(selfCheckOutputFolderBinding, host),
+                                ModSettingsButtonTone.Normal,
+                                T("ritsulib.selfCheck.browse.hint",
+                                    "Opens a folder picker and fills the output folder above."))
+                            .AddButton(
+                                "self_check_open_folder",
+                                T("ritsulib.selfCheck.openFolder.label", "Open output folder"),
+                                T("ritsulib.selfCheck.openFolder.button", "Open folder"),
+                                SelfCheckBundleCoordinator.TryOpenOutputFolderFromSettings,
+                                ModSettingsButtonTone.Normal,
+                                T("ritsulib.selfCheck.openFolder.hint",
+                                    "Opens the configured output folder in your system file explorer."))
+                            .AddButton(
+                                "self_check_run_now",
+                                T("ritsulib.selfCheck.runNow.label", "Run self-check now"),
+                                T("ritsulib.selfCheck.runNow.button", "Run now"),
+                                SelfCheckBundleCoordinator.TryManualRunFromSettings,
+                                ModSettingsButtonTone.Accent,
+                                T("ritsulib.selfCheck.runNow.description",
+                                    "Exports self-check report, Harmony patch dump, and godot.log copy, then creates a zip package."))),
+                    "self-check");
 
                 RitsuLibFramework.RegisterModSettings(
                     Const.ModId,

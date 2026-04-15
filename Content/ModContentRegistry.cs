@@ -498,6 +498,79 @@ namespace STS2RitsuLib.Content
             return ResolveModels<CharacterModel>(RegisteredCharacters);
         }
 
+        internal static ModContentRegisteredTypeSnapshot[] GetRegisteredTypeSnapshots()
+        {
+            lock (SyncRoot)
+            {
+                return RegisteredTypeOwners
+                    .OrderBy(kvp => kvp.Value, StringComparer.OrdinalIgnoreCase)
+                    .ThenBy(kvp => kvp.Key.FullName, StringComparer.Ordinal)
+                    .Select(kvp =>
+                    {
+                        var modelType = kvp.Key;
+                        var modId = kvp.Value;
+                        var modelDbId = TryGetModelDbId(modelType);
+                        var expectedPublicEntry =
+                            TryGetExpectedPublicEntry(modelType, modId, out var hasExplicitOverride);
+                        var typeNamePublicEntry = TryGetTypeNamePublicEntry(modelType);
+                        return new ModContentRegisteredTypeSnapshot(
+                            modId,
+                            modelType,
+                            modelDbId,
+                            expectedPublicEntry,
+                            hasExplicitOverride,
+                            typeNamePublicEntry);
+                    })
+                    .ToArray();
+            }
+
+            static ModelId? TryGetModelDbId(Type modelType)
+            {
+                try
+                {
+                    return ModelDb.GetId(modelType);
+                }
+                catch
+                {
+                    return null;
+                }
+            }
+
+            static string? TryGetExpectedPublicEntry(Type modelType, string modId, out bool hasExplicitOverride)
+            {
+                if (FixedPublicEntryOverrides.TryGetValue(modelType, out var entry))
+                {
+                    hasExplicitOverride = true;
+                    return entry;
+                }
+
+                try
+                {
+                    hasExplicitOverride = false;
+                    return GetFixedPublicEntry(modId, modelType);
+                }
+                catch
+                {
+                    hasExplicitOverride = false;
+                    return null;
+                }
+            }
+
+            static string? TryGetTypeNamePublicEntry(Type modelType)
+            {
+                try
+                {
+                    var typeStem = NormalizePublicStem(modelType.Name);
+                    var categoryStem = NormalizePublicStem(ModelDb.GetCategory(modelType));
+                    return $"{categoryStem}_{typeStem}";
+                }
+                catch
+                {
+                    return null;
+                }
+            }
+        }
+
         internal static Type[] GetRegisteredCharacterStarterCards(Type characterType)
         {
             return GetRegisteredCharacterStarterTypes(characterType, CharacterStarterContentKind.Card);
@@ -916,6 +989,14 @@ namespace STS2RitsuLib.Content
             Relic,
             Potion,
         }
+
+        internal readonly record struct ModContentRegisteredTypeSnapshot(
+            string ModId,
+            Type ModelType,
+            ModelId? ModelDbId,
+            string? ExpectedPublicEntry,
+            bool HasExplicitPublicEntryOverride,
+            string? TypeNamePublicEntry);
 
         private readonly record struct CharacterStarterRegistration(
             Type CharacterType,

@@ -410,9 +410,7 @@ namespace STS2RitsuLib.Settings
 
         private static bool ReadBool(string key, InteropAccessor access)
         {
-            if (access.GetBool != null)
-                return access.GetBool(key);
-            return CoerceBool(access.GetObject(key));
+            return access.GetBool?.Invoke(key) ?? CoerceBool(access.GetObject(key));
         }
 
         private static void WriteBool(string key, bool value, InteropAccessor access)
@@ -428,9 +426,7 @@ namespace STS2RitsuLib.Settings
 
         private static double ReadDouble(string key, InteropAccessor access)
         {
-            if (access.GetDouble != null)
-                return access.GetDouble(key);
-            return CoerceDouble(access.GetObject(key));
+            return access.GetDouble?.Invoke(key) ?? CoerceDouble(access.GetObject(key));
         }
 
         private static void WriteDouble(string key, double value, InteropAccessor access)
@@ -446,9 +442,7 @@ namespace STS2RitsuLib.Settings
 
         private static int ReadInt(string key, InteropAccessor access)
         {
-            if (access.GetInt != null)
-                return access.GetInt(key);
-            return CoerceInt(access.GetObject(key));
+            return access.GetInt?.Invoke(key) ?? CoerceInt(access.GetObject(key));
         }
 
         private static void WriteInt(string key, int value, InteropAccessor access)
@@ -540,7 +534,7 @@ namespace STS2RitsuLib.Settings
 
         private static InteropAccessor BuildAccessor(Type providerType)
         {
-            var flags = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static;
+            const BindingFlags flags = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static;
 
             var getObject = providerType.GetMethod(ResolverGetMethodName, flags, [typeof(string)]);
             var setObject = providerType.GetMethod(ResolverSetMethodName, flags, [typeof(string), typeof(object)]);
@@ -571,17 +565,13 @@ namespace STS2RitsuLib.Settings
                     return (bool)(getBool.Invoke(null, [key]) ?? false);
                 },
                 (key, value) => setBool?.Invoke(null, [key, value]),
-                key =>
-                {
-                    if (getDouble == null) throw new InvalidOperationException();
-                    return Convert.ToDouble(getDouble.Invoke(null, [key]) ?? 0d);
-                },
+                key => getDouble == null
+                    ? throw new InvalidOperationException()
+                    : Convert.ToDouble(getDouble.Invoke(null, [key]) ?? 0d),
                 (key, value) => setDouble?.Invoke(null, [key, value]),
-                key =>
-                {
-                    if (getInt == null) throw new InvalidOperationException();
-                    return Convert.ToInt32(getInt.Invoke(null, [key]) ?? 0);
-                },
+                key => getInt == null
+                    ? throw new InvalidOperationException()
+                    : Convert.ToInt32(getInt.Invoke(null, [key]) ?? 0),
                 (key, value) => setInt?.Invoke(null, [key, value]),
                 key => getString?.Invoke(null, [key]) as string,
                 (key, value) => setString?.Invoke(null, [key, value]),
@@ -629,24 +619,19 @@ namespace STS2RitsuLib.Settings
             root = null!;
             try
             {
-                if (rawSchema == null)
-                    return false;
-
-                if (rawSchema is string text)
+                switch (rawSchema)
                 {
-                    if (string.IsNullOrWhiteSpace(text))
+                    case null:
+                    case string text when string.IsNullOrWhiteSpace(text):
                         return false;
-
-                    if (TryParseJsonSchemaPayload(text, out root))
+                    case string text when TryParseJsonSchemaPayload(text, out root):
                         return true;
-
-                    if (!TryReadSchemaTextFromFile(text, out var fileContent))
-                        return false;
-
-                    return TryParseJsonSchemaPayload(fileContent, out root);
+                    case string text:
+                        return TryReadSchemaTextFromFile(text, out var fileContent) &&
+                               TryParseJsonSchemaPayload(fileContent, out root);
+                    default:
+                        return TryAsMap(rawSchema, out root);
                 }
-
-                return TryAsMap(rawSchema, out root);
             }
             catch
             {

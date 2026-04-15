@@ -510,12 +510,16 @@ namespace STS2RitsuLib.Content
                         var modelType = kvp.Key;
                         var modId = kvp.Value;
                         var modelDbId = TryGetModelDbId(modelType);
-                        var fixedPublicEntry = TryGetFixedPublicEntry(modelType, modId);
+                        var expectedPublicEntry =
+                            TryGetExpectedPublicEntry(modelType, modId, out var hasExplicitOverride);
+                        var typeNamePublicEntry = TryGetTypeNamePublicEntry(modelType);
                         return new ModContentRegisteredTypeSnapshot(
                             modId,
                             modelType,
                             modelDbId,
-                            fixedPublicEntry);
+                            expectedPublicEntry,
+                            hasExplicitOverride,
+                            typeNamePublicEntry);
                     })
                     .ToArray();
             }
@@ -532,14 +536,33 @@ namespace STS2RitsuLib.Content
                 }
             }
 
-            static string? TryGetFixedPublicEntry(Type modelType, string modId)
+            static string? TryGetExpectedPublicEntry(Type modelType, string modId, out bool hasExplicitOverride)
             {
                 if (FixedPublicEntryOverrides.TryGetValue(modelType, out var entry))
+                {
+                    hasExplicitOverride = true;
                     return entry;
+                }
 
                 try
                 {
+                    hasExplicitOverride = false;
                     return GetFixedPublicEntry(modId, modelType);
+                }
+                catch
+                {
+                    hasExplicitOverride = false;
+                    return null;
+                }
+            }
+
+            static string? TryGetTypeNamePublicEntry(Type modelType)
+            {
+                try
+                {
+                    var typeStem = NormalizePublicStem(modelType.Name);
+                    var categoryStem = NormalizePublicStem(ModelDb.GetCategory(modelType));
+                    return $"{categoryStem}_{typeStem}";
                 }
                 catch
                 {
@@ -971,7 +994,9 @@ namespace STS2RitsuLib.Content
             string ModId,
             Type ModelType,
             ModelId? ModelDbId,
-            string? ExpectedPublicEntry);
+            string? ExpectedPublicEntry,
+            bool HasExplicitPublicEntryOverride,
+            string? TypeNamePublicEntry);
 
         private readonly record struct CharacterStarterRegistration(
             Type CharacterType,

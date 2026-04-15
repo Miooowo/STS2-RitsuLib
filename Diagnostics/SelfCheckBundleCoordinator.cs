@@ -1,5 +1,6 @@
 using Godot;
 using STS2RitsuLib.Data;
+using STS2RitsuLib.Settings;
 
 namespace STS2RitsuLib.Diagnostics
 {
@@ -60,11 +61,18 @@ namespace STS2RitsuLib.Diagnostics
 
         private static void TryRunWithConfiguredPath(string outputPath, string logPrefix)
         {
+            var promptTitle = ModSettingsLocalization.Get(
+                "ritsulib.selfCheck.prompt.title",
+                "RitsuLib Self-check");
             var resolvedOutputDirectory = SelfCheckBundleWriter.TryResolveOutputDirectory(outputPath);
             if (string.IsNullOrEmpty(resolvedOutputDirectory))
             {
                 RitsuLibFramework.Logger.Warn(
                     $"{logPrefix} Output folder is empty or invalid. Configure a valid path in RitsuLib settings.");
+                var message = ModSettingsLocalization.Get(
+                    "ritsulib.selfCheck.prompt.invalidPath",
+                    "Self-check did not run: output folder is empty or invalid. Configure a valid path first.");
+                ShowCompletionPrompt(promptTitle, message);
                 return;
             }
 
@@ -73,10 +81,43 @@ namespace STS2RitsuLib.Diagnostics
             if (!SelfCheckBundleWriter.TryWriteBundle(resolvedOutputDirectory, out var zipPath, out var error))
             {
                 RitsuLibFramework.Logger.Warn($"{logPrefix} Export failed: {error}");
+                var messagePattern = ModSettingsLocalization.Get(
+                    "ritsulib.selfCheck.prompt.failed",
+                    "Self-check export failed: {0}");
+                ShowCompletionPrompt(promptTitle, string.Format(messagePattern, error));
                 return;
             }
 
             RitsuLibFramework.Logger.Info($"{logPrefix} Export complete. Zip: {zipPath}");
+            var successPattern = ModSettingsLocalization.Get(
+                "ritsulib.selfCheck.prompt.success",
+                "Self-check complete. Exported zip: {0}");
+            ShowCompletionPrompt(promptTitle, string.Format(successPattern, NormalizePathForDisplay(zipPath)));
+        }
+
+        private static void ShowCompletionPrompt(string title, string message)
+        {
+            try
+            {
+                var tree = Engine.GetMainLoop() as SceneTree;
+                if (tree?.Root == null)
+                    return;
+
+                var dismiss = ModSettingsLocalization.Get("clipboard.pasteErrorOk", "OK");
+                ModSettingsUiFactory.ShowStyledNotice(tree.Root, title, message, dismiss);
+            }
+            catch (Exception ex)
+            {
+                RitsuLibFramework.Logger.Warn($"[SelfCheck][Prompt] Failed to show completion prompt: {ex.Message}");
+            }
+        }
+
+        private static string NormalizePathForDisplay(string? path)
+        {
+            if (string.IsNullOrWhiteSpace(path))
+                return path ?? string.Empty;
+            return path.Replace('\\', Path.DirectorySeparatorChar)
+                .Replace('/', Path.DirectorySeparatorChar);
         }
     }
 }

@@ -58,7 +58,8 @@ namespace STS2RitsuLib
             var patcher = CreatePatcher(Const.ModId, "framework-core", "framework core");
             patcher.RegisterPatch<ModTypeDiscoveryPatch>();
             patcher.RegisterPatch<SavedPropertiesTypeCacheInjectionPatch>();
-            patcher.RegisterPatch<SavedAttachedStatePatch>();
+            patcher.RegisterPatch<SavedAttachedStatePatches.SavedPropertiesFromInternalPatch>();
+            patcher.RegisterPatch<SavedAttachedStatePatches.SavedPropertiesFillInternalPatch>();
             patcher.RegisterPatch<CoreInitializationLifecyclePatch>();
             patcher.RegisterPatch<NMainMenuContinueRunMissingCharacterPatch>();
             patcher.RegisterPatch<NMainMenuHarmonyPatchDumpPatch>();

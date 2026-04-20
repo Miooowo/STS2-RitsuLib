@@ -1,0 +1,6 @@
+node_modules/
+dist/
+.astro/
+# 由 npm run sync-docs 从 ../Docs/zh 生成
+src/content/docs/*.md
+!src/content/docs/index.md

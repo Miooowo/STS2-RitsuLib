@@ -1,11 +1,15 @@
-# 在 push 到 docs 分支时构建 Starlight 站点并部署到 GitHub Pages。
+# 在 push 到 docs 或 main（且变更文档相关路径）时构建 Starlight 并部署到 GitHub Pages。
 # 使用前请在仓库 Settings → Pages → Build and deployment 中选择「GitHub Actions」。
 
 name: Deploy documentation
 
 on:
   push:
-    branches: [docs]
+    branches: [docs, main]
+    paths:
+      - 'website/**'
+      - 'Docs/**'
+      - '.github/workflows/deploy-docs.yml'
   workflow_dispatch:
 
 permissions:
@@ -35,7 +39,7 @@ jobs:
         working-directory: website
         run: npm ci
 
-      - name: Sync Markdown from Docs/zh
+      - name: Sync Markdown from Docs/zh and Docs/en
         working-directory: website
         run: npm run sync-docs
 

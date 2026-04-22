@@ -119,10 +119,10 @@ namespace STS2RitsuLib.Utils
 
             public Type TargetType { get; } = typeof(TSavedKey);
 
-            public void Export(object model, SavedProperties props)
+            public bool Export(object model, SavedProperties props)
             {
-                if (owner.TryGetValue((TSavedKey)model, out var value))
-                    SavedAttachedStateRegistry.AddToProperties(props, Name, value);
+                return owner.TryGetValue((TSavedKey)model, out var value) &&
+                       SavedAttachedStateRegistry.AddToProperties(props, Name, value);
             }
 
             public void Import(object model, SavedProperties props)
@@ -138,7 +138,7 @@ namespace STS2RitsuLib.Utils
         string Name { get; }
         int Order { get; }
         Type TargetType { get; }
-        void Export(object model, SavedProperties props);
+        bool Export(object model, SavedProperties props);
         void Import(object model, SavedProperties props);
     }
 
@@ -199,42 +199,44 @@ namespace STS2RitsuLib.Utils
                 $"SavedAttachedState uses unsupported type {type.Name}. Only SavedProperties-compatible value types are supported.");
         }
 
-        internal static void AddToProperties(SavedProperties props, string name, object? value)
+        internal static bool AddToProperties(SavedProperties props, string name, object? value)
         {
             switch (value)
             {
                 case null:
-                    return;
+                    return false;
                 case int i:
                     (props.ints ??= []).Add(new(name, i));
-                    break;
+                    return true;
                 case bool b:
                     (props.bools ??= []).Add(new(name, b));
-                    break;
+                    return true;
                 case string s:
                     (props.strings ??= []).Add(new(name, s));
-                    break;
+                    return true;
                 case Enum e:
                     (props.ints ??= []).Add(new(name, Convert.ToInt32(e)));
-                    break;
+                    return true;
                 case ModelId modelId:
                     (props.modelIds ??= []).Add(new(name, modelId));
-                    break;
+                    return true;
                 case SerializableCard card:
                     (props.cards ??= []).Add(new(name, card));
-                    break;
+                    return true;
                 case int[] ints:
                     (props.intArrays ??= []).Add(new(name, ints));
-                    break;
+                    return true;
                 case Enum[] enums:
                     (props.intArrays ??= []).Add(new(name, enums.Select(Convert.ToInt32).ToArray()));
-                    break;
+                    return true;
                 case SerializableCard[] cardArray:
                     (props.cardArrays ??= []).Add(new(name, cardArray));
-                    break;
+                    return true;
                 case List<SerializableCard> cardList:
                     (props.cardArrays ??= []).Add(new(name, cardList.ToArray()));
-                    break;
+                    return true;
+                default:
+                    return false;
             }
         }
 

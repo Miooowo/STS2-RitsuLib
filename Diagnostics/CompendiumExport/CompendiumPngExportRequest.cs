@@ -48,6 +48,7 @@ namespace STS2RitsuLib.Diagnostics.CompendiumExport
                 Scale = 1.0,
                 Relics = true,
                 Potions = true,
+                IncludeRelicHoverTips = true,
             };
         }
     }

@@ -23,7 +23,7 @@ namespace STS2RitsuLib.Diagnostics.CompendiumExport
     public static class CompendiumDetailPngExporter
     {
         private const string InspectRelicScene = "screens/inspect_relic_screen/inspect_relic_screen";
-        private const string PotionScenePath = "/potions/potion";
+        private const string PotionScenePath = "potions/potion";
 
         private const float PotionLabFocusScale = 1.2f;
         private const float PotionToTipsGap = 32f;

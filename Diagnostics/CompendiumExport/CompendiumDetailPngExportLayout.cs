@@ -14,7 +14,6 @@ namespace STS2RitsuLib.Diagnostics.CompendiumExport
     internal static class CompendiumDetailPngExportLayout
     {
         internal const float HoverTipTargetWidth = 360f;
-        private const int HoverRowColumnSeparation = 0;
         private const int RefCardHoverTipVerticalGap = 4;
         private const float CardHoverTipSceneCardScale = 0.75f;
         private const string HoverTipScenePath = "res://scenes/ui/hover_tip.tscn";
@@ -167,7 +166,6 @@ namespace STS2RitsuLib.Diagnostics.CompendiumExport
         internal static HBoxContainer CreateHoverRowForPotionExport()
         {
             var row = new HBoxContainer { Name = "PotionDetailHoverRow" };
-            row.AddThemeConstantOverride("separation", HoverRowColumnSeparation);
             return row;
         }
 
